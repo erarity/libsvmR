@@ -2,493 +2,60 @@ svm <-
 function (x, ...)
     UseMethod ("svm")
 
-svm.formula <-
-function (formula, data = NULL, ..., subset, na.action = na.omit, scale = TRUE)
-{
-    call <- match.call()
-    if (!inherits(formula, "formula"))
-        stop("method is only for formula objects")
-    m <- match.call(expand.dots = FALSE)
-    if (identical(class(eval.parent(m$data)), "matrix"))
-        m$data <- as.data.frame(eval.parent(m$data))
-    m$... <- NULL
-    m$scale <- NULL
-    m[[1]] <- as.name("model.frame")
-    m$na.action <- na.action
-    m <- eval(m, parent.frame())
-    Terms <- attr(m, "terms")
-    attr(Terms, "intercept") <- 0
-    x <- model.matrix(Terms, m)
-    y <- model.extract(m, "response")
-    attr(x, "na.action") <- attr(y, "na.action") <- attr(m, "na.action")
-    if (length(scale) == 1)
-        scale <- rep(scale, ncol(x))
-    if (any(scale)) {
-        remove <- unique(c(which(labels(Terms) %in%
-                                 names(attr(x, "contrasts"))),
-                           which(!scale)
-                           )
-                         )
-        scale <- !attr(x, "assign") %in% remove
-    }
-    ret <- svm.default (x, y, scale = scale, ..., na.action = na.action)
-    ret$call <- call
-    ret$call[[1]] <- as.name("svm")
-    ret$terms <- Terms
-    if (!is.null(attr(m, "na.action")))
-        ret$na.action <- attr(m, "na.action")
-    class(ret) <- c("svm.formula", class(ret))
-    return (ret)
-}
+predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
+    stopifnot(class(model) == "svmmodel",
+              !missing(newdata),
+              class(newdata) == "svmproblem",
+              model$nCols == newdata$nCols,
+              model$tot.nSV > 0)
 
-svm.default <-
-function (x,
-          y           = NULL,
-          scale       = TRUE,
-          type        = NULL,
-          kernel      = "radial",
-          degree      = 3,
-          gamma       = if (is.vector(x)) 1 else 1 / ncol(x),
-          coef0       = 0,
-          cost        = 1,
-          nu          = 0.5,
-          class.weights = NULL,
-          cachesize   = 40,
-          tolerance   = 0.001,
-          epsilon     = 0.1,
-          shrinking   = TRUE,
-          cross       = 0,
-          probability = FALSE,
-          fitted      = TRUE,
-          seed        = 1L,
-          ...,
-          subset,
-          na.action = na.omit)
-{
-    if(inherits(x, "Matrix")) {
-        library("SparseM")
-        library("Matrix")
-        x <- as(x, "matrix.csr")
-    }
-    if(inherits(x, "simple_triplet_matrix")) {
-        library("SparseM")
-        ind <- order(x$i, x$j)
-        x <- new("matrix.csr",
-                 ra = x$v[ind],
-                 ja = x$j[ind],
-                 ia = as.integer(cumsum(c(1, tabulate(x$i[ind])))),
-                 dimension = c(x$nrow, x$ncol))
-    }
-    if (sparse <- inherits(x, "matrix.csr"))
-        library("SparseM")
+    ret <- list(pred = double(newdata$nRows),
+                dec = double(newdata$nRows * model$nclasses * (model$nclasses - 1) / 2),
+                prob = double(newdata$nRows * model$nclasses))
+    
+    .External("svmpredict",
+              train = newdata$x,
+              nRows = newdata$nRows,
+              probability = probability,
+              model = model,
+              ret = ret)
 
-    ## NULL parameters?
-    if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
-    if(is.null(gamma)) stop(sQuote("gamma"), " must not be NULL!")
-    if(is.null(coef0)) stop(sQuote("coef0"), " must not be NULL!")
-    if(is.null(cost)) stop(sQuote("cost"), " must not be NULL!")
-    if(is.null(nu)) stop(sQuote("nu"), " must not be NULL!")
-    if(is.null(epsilon)) stop(sQuote("epsilon"), " must not be NULL!")
-    if(is.null(tolerance)) stop(sQuote("tolerance"), " must not be NULL!")
-
-    xhold   <- if (fitted) x else NA
-    x.scale <- y.scale <- NULL
-    formula <- inherits(x, "svm.formula")
-
-    ## determine model type
-    if (is.null(type)) type <-
-        if (is.null(y)) "one-classification"
-        else if (is.factor(y)) "C-classification"
-        else "eps-regression"
-
-    type <- pmatch(type, c("C-classification",
-                           "nu-classification",
-                           "one-classification",
-                           "eps-regression",
-                           "nu-regression"), 99) - 1
-
-    if (type > 10) stop("wrong type specification!")
-
-    kernel <- pmatch(kernel, c("linear",
-                               "polynomial",
-                               "radial",
-                               "sigmoid"), 99) - 1
-
-    if (kernel > 10) stop("wrong kernel specification!")
-
-    nac <- attr(x, "na.action")
-
-    ## scaling, subsetting, and NA handling
-    if (sparse) {
-        scale <- rep(FALSE, ncol(x))
-        if(!is.null(y)) na.fail(y)
-        x <- SparseM::t(SparseM::t(x)) ## make shure that col-indices are sorted
-    } else {
-        x <- as.matrix(x)
-
-        ## subsetting and na-handling for matrices
-        if (!formula) {
-            if (!missing(subset)) x <- x[subset,]
-            if (is.null(y))
-                x <- na.action(x)
-            else {
-                df <- na.action(data.frame(y, x))
-                y <- df[,1]
-                x <- as.matrix(df[,-1])
-                nac <-
-                    attr(x, "na.action") <-
-                        attr(y, "na.action") <-
-                            attr(df, "na.action")
-            }
-        }
-
-        ## scaling
-        if (length(scale) == 1)
-            scale <- rep(scale, ncol(x))
-        if (any(scale)) {
-            co <- !apply(x[,scale, drop = FALSE], 2, var)
-            if (any(co)) {
-                warning(paste("Variable(s)",
-                              paste(sQuote(colnames(x[,scale,
-                                                      drop = FALSE])[co]),
-                                    sep="", collapse=" and "),
-                              "constant. Cannot scale data.")
-                        )
-                scale <- rep(FALSE, ncol(x))
-            } else {
-                xtmp <- scale(x[,scale])
-                x[,scale] <- xtmp
-                x.scale <- attributes(xtmp)[c("scaled:center","scaled:scale")]
-                if (is.numeric(y) && (type > 2)) {
-                    y <- scale(y)
-                    y.scale <- attributes(y)[c("scaled:center","scaled:scale")]
-                    y <- as.vector(y)
-                }
-            }
-        }
-    }
-
-    ## further parameter checks
-    nr <- nrow(x)
-    if (cross > nr)
-        stop(sQuote("cross"), " cannot exceed the number of observations!")
-
-    if (!is.vector(y) && !is.factor (y) && type != 2)
-        stop("y must be a vector or a factor.")
-    if (type != 2 && length(y) != nr)
-        stop("x and y don't match.")
-
-    if (cachesize < 0.1)
-        cachesize <- 0.1
-
-    if (type > 2 && !is.numeric(y))
-        stop("Need numeric dependent variable for regression.")
-
-    lev <- NULL
-    weightlabels <- NULL
-
-    ## in case of classification: transform factors into integers
-    if (type == 2) # one class classification --> set dummy
-        y <- rep(1, nr)
-    else
-        if (is.factor(y)) {
-            lev <- levels(y)
-            y <- as.integer(y)
-            if (!is.null(class.weights)) {
-                if (is.null(names(class.weights)))
-                    stop("Weights have to be specified along with their according level names !")
-                weightlabels <- match (names(class.weights), lev)
-                if (any(is.na(weightlabels)))
-                    stop("At least one level name is missing or misspelled.")
-            }
-        } else {
-            if (type < 3) {
-                if(any(as.integer(y) != y))
-                    stop("dependent variable has to be of factor or integer type for classification mode.")
-                y <- as.factor(y)
-                lev <- levels(y)
-                y <- as.integer(y)
-            } else lev <- unique(y)
-        }
-
-    nclass <- 2
-    if (type < 2) nclass <- length(lev)
-
-    if (type > 1 && length(class.weights) > 0) {
-        class.weights <- NULL
-        warning(sQuote("class.weights"), " are set to NULL for regression mode. For classification, use a _factor_ for ", sQuote("y"),
-", or specify the correct ", sQuote("type"), " argument.")
-    }
-
-    err <- empty_string <- paste(rep(" ", 255), collapse = "")
-    cret <- .C ("svmtrain",
-                ## data
-                as.double  (if (sparse) x@ra else t(x)),
-                as.integer (nr), as.integer(ncol(x)),
-                as.double  (y),
-                ## sparse index info
-                as.integer (if (sparse) x@ia else 0),
-                as.integer (if (sparse) x@ja else 0),
-
-                ## parameters
-                as.integer (type),
-                as.integer (kernel),
-                as.integer (degree),
-                as.double  (gamma),
-                as.double  (coef0),
-                as.double  (cost),
-                as.double  (nu),
-                as.integer (weightlabels),
-                as.double  (class.weights),
-                as.integer (length (class.weights)),
-                as.double  (cachesize),
-                as.double  (tolerance),
-                as.double  (epsilon),
-                as.integer (shrinking),
-                as.integer (cross),
-                as.integer (sparse),
-                as.integer (probability),
-                as.integer (seed),
-
-                ## results
-                nclasses = integer  (1),
-                nr       = integer  (1), # nr of support vectors
-                index    = integer  (nr),
-                labels   = integer  (nclass),
-                nSV      = integer  (nclass),
-                rho      = double   (nclass * (nclass - 1) / 2),
-                coefs    = double   (nr * (nclass - 1)),
-                sigma    = double   (1),
-                probA    = double   (nclass * (nclass - 1) / 2),
-                probB    = double   (nclass * (nclass - 1) / 2),
-
-                cresults = double   (cross),
-                ctotal1  = double   (1),
-                ctotal2  = double   (1),
-                error    = err,
-
-                PACKAGE = "e1071")
-
-    if (cret$error != empty_string)
-        stop(paste(cret$error, "!", sep=""))
-
-    ret <- list (
-                 call     = match.call(),
-                 type     = type,
-                 kernel   = kernel,
-                 cost     = cost,
-                 degree   = degree,
-                 gamma    = gamma,
-                 coef0    = coef0,
-                 nu       = nu,
-                 epsilon  = epsilon,
-                 sparse   = sparse,
-                 scaled   = scale,
-                 x.scale  = x.scale,
-                 y.scale  = y.scale,
-
-                 nclasses = cret$nclasses, #number of classes
-                 levels   = lev,
-                 tot.nSV  = cret$nr, #total number of sv
-                 nSV      = cret$nSV[1:cret$nclasses], #number of SV in diff. classes
-                 labels   = cret$label[1:cret$nclasses], #labels of the SVs.
-                 SV       = if (sparse) SparseM::t(SparseM::t(x[cret$index[1:cret$nr],]))
-                 else t(t(x[cret$index[1:cret$nr],])), #copy of SV
-                 index    = cret$index[1:cret$nr],  #indexes of sv in x
-                 ##constants in decision functions
-                 rho      = cret$rho[1:(cret$nclasses * (cret$nclasses - 1) / 2)],
-                 ##probabilites
-                 compprob = probability,
-                 probA    = if (!probability) NULL else
-                 cret$probA[1:(cret$nclasses * (cret$nclasses - 1) / 2)],
-                 probB    = if (!probability) NULL else
-                 cret$probB[1:(cret$nclasses * (cret$nclasses - 1) / 2)],
-                 sigma    = if (probability) cret$sigma else NULL,
-                 ##coefficiants of sv
-                 coefs    = if (cret$nr == 0) NULL else
-                 t(matrix(cret$coefs[1:((cret$nclasses - 1) * cret$nr)],
-                          nrow = cret$nclasses - 1,
-                          byrow = TRUE)),
-                 na.action = nac
-                 )
-
-    ## cross-validation-results
-    if (cross > 0)
-        if (type > 2) {
-            scale.factor     <- if (any(scale)) crossprod(y.scale$"scaled:scale") else 1;
-            ret$MSE          <- cret$cresults * scale.factor;
-            ret$tot.MSE      <- cret$ctotal1  * scale.factor;
-            ret$scorrcoeff   <- cret$ctotal2;
-        } else {
-            ret$accuracies   <- cret$cresults;
-            ret$tot.accuracy <- cret$ctotal1;
-        }
-
-    class (ret) <- "svm"
-
-    if (fitted) {
-        ret$fitted <- na.action(predict(ret, xhold,
-                                        decision.values = TRUE))
-        ret$decision.values <- attr(ret$fitted, "decision.values")
-        attr(ret$fitted, "decision.values") <- NULL
-        if (type > 1) ret$residuals <- y - ret$fitted
-    }
-
+    ## PACKAGE = "e1071"
+    ## )
+    ## class(ret) <- "svm.prediction"
     ret
 }
 
-predict.svm <-
-function (object, newdata,
-          decision.values = FALSE,
-          probability = FALSE,
-          ...,
-          na.action = na.omit)
-{
-    if (missing(newdata))
-        return(fitted(object))
+print.svmproblem <-  function(x,...) {
+    cat("\nSVM Problem Data\n")
+    cat("Rows:",x$nRows,"\n")
+    cat("nCols:", x$nCols,"\n")
+    cat("y: ",if(is.null(x$y)){"Missing"}else{"Present"},"\n\n")
+}
+                 
+setMethod("[", "svmproblem", #signature(x = "svmproblem", i = "index", j = "missing", drop = "logical"),
+          function(x, i, j, ..., drop){
+              x$x <- x$x[i]
+              if(!is.null(x$y)){
+                  x$y <- y[i]
+              }
+              x
+          }
+)
 
-    if (object$tot.nSV < 1)
-        stop("Model is empty!")
-
-
-    if(inherits(newdata, "Matrix")) {
-        library("SparseM")
-        library("Matrix")
-        newdata <- as(newdata, "matrix.csr")
+"[.svmproblem" <- function(x, i, j, ..., drop){
+    x$x <- x$x[i]
+    if(!is.null(x$y)){
+        x$y <- x$y[i]
     }
-    if(inherits(newdata, "simple_triplet_matrix")) {
-       library("SparseM")
-       ind <- order(newdata$i, newdata$j)
-       newdata <- new("matrix.csr",
-                      ra = newdata$v[ind],
-                      ja = newdata$j[ind],
-                      ia = as.integer(cumsum(c(1, tabulate(newdata$i[ind])))),
-                      dimension = c(newdata$nrow, newdata$ncol))
-   }
-
-    sparse <- inherits(newdata, "matrix.csr")
-    if (object$sparse || sparse)
-        library("SparseM")
-
-    act <- NULL
-    if ((is.vector(newdata) && is.atomic(newdata)))
-        newdata <- t(t(newdata))
-    if (sparse)
-        newdata <- SparseM::t(SparseM::t(newdata))
-    preprocessed <- !is.null(attr(newdata, "na.action"))
-    rowns <- if (!is.null(rownames(newdata)))
-        rownames(newdata)
-    else
-        1:nrow(newdata)
-    if (!object$sparse) {
-        if (inherits(object, "svm.formula")) {
-            if(is.null(colnames(newdata)))
-                colnames(newdata) <- colnames(object$SV)
-            newdata <- na.action(newdata)
-            act <- attr(newdata, "na.action")
-            newdata <- model.matrix(delete.response(terms(object)),
-                                    as.data.frame(newdata))
-        } else {
-            newdata <- na.action(as.matrix(newdata))
-            act <- attr(newdata, "na.action")
-        }
-    }
-
-    if (!is.null(act) && !preprocessed)
-        rowns <- rowns[-act]
-
-    if (any(object$scaled))
-        newdata[,object$scaled] <-
-            scale(newdata[,object$scaled, drop = FALSE],
-                  center = object$x.scale$"scaled:center",
-                  scale  = object$x.scale$"scaled:scale"
-                  )
-
-    if (ncol(object$SV) != ncol(newdata))
-        stop ("test data does not match model !")
-
-    ret <- .C ("svmpredict",
-               as.integer (decision.values),
-               as.integer (probability),
-
-               ## model
-               as.double  (if (object$sparse) object$SV@ra else t(object$SV)),
-               as.integer (nrow(object$SV)), as.integer(ncol(object$SV)),
-               as.integer (if (object$sparse) object$SV@ia else 0),
-               as.integer (if (object$sparse) object$SV@ja else 0),
-               as.double  (as.vector(object$coefs)),
-               as.double  (object$rho),
-               as.integer (object$compprob),
-               as.double  (object$probA),
-               as.double  (object$probB),
-               as.integer (object$nclasses),
-               as.integer (object$tot.nSV),
-               as.integer (object$labels),
-               as.integer (object$nSV),
-               as.integer (object$sparse),
-
-               ## parameter
-               as.integer (object$type),
-               as.integer (object$kernel),
-               as.integer (object$degree),
-               as.double  (object$gamma),
-               as.double  (object$coef0),
-
-               ## test matrix
-               as.double  (if (sparse) newdata@ra else t(newdata)),
-               as.integer (nrow(newdata)),
-               as.integer (if (sparse) newdata@ia else 0),
-               as.integer (if (sparse) newdata@ja else 0),
-               as.integer (sparse),
-
-               ## decision-values
-               ret = double(nrow(newdata)),
-               dec = double(nrow(newdata) * object$nclasses * (object$nclasses - 1) / 2),
-               prob = double(nrow(newdata) * object$nclasses),
-
-               PACKAGE = "e1071"
-               )
-
-    ret2 <- if (is.character(object$levels)) # classification: return factors
-        factor (object$levels[ret$ret], levels = object$levels)
-    else if (object$type == 2) # one-class-classification: return TRUE/FALSE
-        ret$ret == 1
-    else if (any(object$scaled) && !is.null(object$y.scale)) # return raw values, possibly scaled back
-        ret$ret * object$y.scale$"scaled:scale" + object$y.scale$"scaled:center"
-    else
-        ret$ret
-
-    names(ret2) <- rowns
-    ret2 <- napredict(act, ret2)
-
-    if (decision.values) {
-        colns = c()
-        for (i in 1:(object$nclasses - 1))
-            for (j in (i + 1):object$nclasses)
-                colns <- c(colns,
-                           paste(object$levels[object$labels[i]],
-                                 "/", object$levels[object$labels[j]],
-                                 sep = ""))
-        attr(ret2, "decision.values") <-
-            napredict(act,
-                      matrix(ret$dec, nrow = nrow(newdata), byrow = TRUE,
-                             dimnames = list(rowns, colns)
-                             )
-                      )
-    }
-
-    if (probability && object$type < 2)
-        attr(ret2, "probabilities") <-
-            napredict(act,
-                      matrix(ret$prob, nrow = nrow(newdata), byrow = TRUE,
-                             dimnames = list(rowns, object$levels[object$labels])
-                             )
-                      )
-
-    ret2
+    x$nRows <- length(i)
+    x
 }
 
-print.svm <-
+
+
+
+print.svmmodel <-
 function (x, ...)
 {
     cat("\nCall:", deparse(x$call, 0.8 * getOption("width")), "\n", sep="\n")
@@ -684,4 +251,192 @@ function (object, svm.file="Rdata.svm", scale.file = "Rdata.scale",
         write.table(data.frame(center = object$y.scale$"scaled:center",
                                scale  = object$y.scale$"scaled:scale"),
                     file=yscale.file, col.names=FALSE, row.names=FALSE)
+}
+
+read.svmproblem <-
+  function(filename){
+    stopifnot(is.character(filename),
+              file.exists(filename))
+    prob <- .Call("svm_read_problem",
+                  filename
+                                        #PACKAGE="libsvmR"
+                  )
+    ## Should have a list of 4 things
+    ## length, targetvalues, feature pointers, node space
+    names(prob) <- c("nRows","nCols","y","x","x.space")
+    class(prob) <- "svmproblem"
+    prob
+  }
+
+
+
+set.svmdebug <- function(d){
+  .C("svm_set_debug",as.integer(d))
+}
+
+svm.default <-
+function (p,
+          type        = NULL,
+          kernel      = "radial",
+          degree      = 3L,
+          gamma       = 1 / p$nCols,
+          coef0       = 0,
+          cost        = 1,
+          nu          = 0.5,
+          class.weights = NULL,
+          cachesize   = 40,
+          tolerance   = 0.001,
+          epsilon     = 0.1,
+          shrinking   = TRUE,
+          probability = FALSE,
+          fitted      = TRUE,
+          seed        = 1L,
+          ...)
+{
+  stopifnot(class(p) == "svmproblem")
+  y <- p$y
+
+  ## NULL parameters?
+  if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
+  if(is.null(gamma)) stop(sQuote("gamma"), " must not be NULL!")
+  if(is.null(coef0)) stop(sQuote("coef0"), " must not be NULL!")
+  if(is.null(cost)) stop(sQuote("cost"), " must not be NULL!")
+  if(is.null(nu)) stop(sQuote("nu"), " must not be NULL!")
+  if(is.null(epsilon)) stop(sQuote("epsilon"), " must not be NULL!")
+  if(is.null(tolerance)) stop(sQuote("tolerance"), " must not be NULL!")
+
+  ## determine model type
+  if (is.null(type)) type <-
+    if (is.null(y)) "one-classification"
+    else if (is.factor(y)) "C-classification"
+    else "eps-regression"
+
+  type <- pmatch(type, c("C-classification",
+                         "nu-classification",
+                         "one-classification",
+                         "eps-regression",
+                         "nu-regression"), 99) - 1
+
+  if (type > 10) stop("wrong type specification!")
+
+  kernel.name <- kernel
+  kernel <- pmatch(kernel, c("linear",
+                             "polynomial",
+                             "radial",
+                             "sigmoid"), 99) - 1
+
+  if (kernel > 10) stop("wrong kernel specification!")
+  type <- as.integer(type)
+  kernel <- as.integer(kernel)  
+
+  ## further parameter checks
+  nr <- p$nRows
+
+  if (!is.vector(y) && !is.factor (y) && type != 2)
+    stop("y must be a vector or a factor.")
+  if (type != 2 && length(y) != nr)
+    stop("x and y don't match.")
+
+  if (cachesize < 0.1)
+    cachesize <- 0.1
+  
+  if (type > 2 && !is.numeric(y))
+    stop("Need numeric dependent variable for regression.")
+
+  lev <- NULL
+  weightlabels <- NULL
+
+  ## in case of classification: transform factors into integers
+  if (type == 2) # one class classification --> set dummy
+    y <- rep(1, nr)
+  else
+    if (is.factor(y)) {
+        lev <- levels(y)
+        y <- as.integer(y)
+        if (!is.null(class.weights)) {
+            if (is.null(names(class.weights)))
+              stop("Weights have to be specified along with their according level names !")
+            weightlabels <- match (names(class.weights), lev)
+            if (any(is.na(weightlabels)))
+              stop("At least one level name is missing or misspelled.")
+        }
+    } else {
+        if (type < 3) {
+            if(any(as.integer(y) != y))
+              stop("dependent variable has to be of factor or integer type for classification mode.")
+            y <- as.factor(y)
+            lev <- levels(y)
+            y <- as.integer(y)
+        } else lev <- unique(y)
+    }
+
+  nclass <- 2
+  if (type < 2) nclass <- length(lev)
+
+  if (type > 1 && length(class.weights) > 0) {
+      class.weights <- NULL
+      warning(sQuote("class.weights"), " are set to NULL for regression mode. For classification, use a _factor_ for ", sQuote("y"),
+              ", or specify the correct ", sQuote("type"), " argument.")
+  }
+
+  ret <- list(## Allocate results ahead of time and modify in C call
+              nclasses = integer  (1),
+              tot.nSV  = integer  (1),  # for all classes
+              SV       = NULL,          # External pointer for SVs
+              labels   = integer  (nclass),
+              nSV      = integer  (nclass),
+              rho      = double   (nclass * (nclass - 1) / 2),
+              coefs    = double   (nr * (nclass - 1)),
+              sigma    = if (probability){double (nclass * (nclass - 1) / 2)} else NULL,
+              probA    = if (probability){double (nclass * (nclass - 1) / 2)} else NULL,
+              probB    = if (probability){double (nclass * (nclass - 1) / 2)} else NULL,
+              x.space  = p$x.space)
+
+  .External("svmtrain",
+            nRows        = nr,
+            x            = p$x,
+            y            = as.numeric(y),
+            type         = as.integer(type),
+            kernel       = kernel,
+            degree       = degree,
+            gamma        = gamma,
+            coef0        = coef0,
+            cost         = cost,
+            nu           = nu,
+            weightlabels = weightlabels,
+            weights      = class.weights,
+            nWeights     = length(class.weights),
+            cachesize    = cachesize,
+            tolerance    = tolerance,
+            epsilon      = epsilon,
+            shrinking    = shrinking,
+            probability  = probability,
+            seed         = seed,
+            ret          = ret)
+  ## PACKAGE = "e1071")
+
+  ret <- append(ret,
+                list(
+                     call        = match.call(),
+                     type        = type,
+                     kernel.name = kernel.name,
+                     kernel      = kernel,
+                     cost        = cost,
+                     degree      = degree,
+                     gamma       = gamma,
+                     coef0       = coef0,
+                     nu          = nu,
+                     epsilon     = epsilon,
+                     levels      = lev,
+                     nCols       = p$nCols))
+
+  class (ret) <- "svmmodel"
+  ## if (fitted) {
+  ##       ret$fitted <- na.action(predict(ret, xhold,
+  ##                                       decision.values = TRUE))
+  ##       ret$decision.values <- attr(ret$fitted, "decision.values")
+  ##       attr(ret$fitted, "decision.values") <- NULL
+  ##       if (type > 1) ret$residuals <- y - ret$fitted
+  ##   }
+  ret
 }

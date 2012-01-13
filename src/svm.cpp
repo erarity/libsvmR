@@ -7,6 +7,12 @@
 #include <stdarg.h>
 #include <limits.h>
 #include "svm.h"
+
+#include <R.h>
+#include <Rinternals.h>
+#include <Rdefines.h>
+
+
 int libsvm_version = LIBSVM_VERSION;
 typedef float Qfloat;
 typedef signed char schar;
@@ -35,27 +41,30 @@ static inline double powi(double base, int times)
 }
 #define INF HUGE_VAL
 #define TAU 1e-12
-#define Malloc(type,n) (type *)malloc((n)*sizeof(type))
+// #define Malloc(type,n) (type *)malloc((n)*sizeof(type))
+#define Malloc(type,n) Calloc(n,type)
+#define info Rprintf
 
-static void print_string_stdout(const char *s)
-{
-	fputs(s,stdout);
-	fflush(stdout);
-}
-static void (*svm_print_string) (const char *) = &print_string_stdout;
-#if 1
-static void info(const char *fmt,...)
-{
-	char buf[BUFSIZ];
-	va_list ap;
-	va_start(ap,fmt);
-	vsprintf(buf,fmt,ap);
-	va_end(ap);
-	(*svm_print_string)(buf);
-}
-#else
-static void info(const char *fmt,...) {}
-#endif
+// static void print_string_stdout(const char *s)
+// {
+// 	fputs(s,stdout);
+// 	fflush(stdout);
+// }
+// static void (*svm_print_string) (const char *) = &print_string_stdout;
+// #if 1
+// static void info(const char *fmt,...)
+// {
+// 	char buf[BUFSIZ];
+// 	va_list ap;
+// 	va_start(ap,fmt);
+// 	vsprintf(buf,fmt,ap);
+// 	va_end(ap);
+// 	(*svm_print_string)(buf);
+// }
+// #else
+// static void info(const char *fmt,...) {}
+// #endif
+
 
 //
 // Kernel Cache
@@ -102,8 +111,8 @@ Cache::Cache(int l_,long int size_):l(l_),size(size_)
 Cache::~Cache()
 {
 	for(head_t *h = lru_head.next; h != &lru_head; h=h->next)
-		free(h->data);
-	free(head);
+		Free(h->data);
+	Free(head);
 }
 
 void Cache::lru_delete(head_t *h)
@@ -135,7 +144,7 @@ int Cache::get_data(const int index, Qfloat **data, int len)
 		{
 			head_t *old = lru_head.next;
 			lru_delete(old);
-			free(old->data);
+			Free(old->data);
 			size += old->len;
 			old->data = 0;
 			old->len = 0;
@@ -174,7 +183,7 @@ void Cache::swap_index(int i, int j)
 			{
 				// give up
 				lru_delete(h);
-				free(h->data);
+				Free(h->data);
 				size += h->len;
 				h->data = 0;
 				h->len = 0;
@@ -1811,7 +1820,7 @@ static void sigmoid_train(
 
 	if (iter>=max_iter)
 		info("Reaching maximal iterations in two-class probability estimates\n");
-	free(t);
+	Free(t);
 }
 
 static double sigmoid_predict(double decision_value, double A, double B)
@@ -1883,9 +1892,9 @@ static void multiclass_probability(int k, double **r, double *p)
 	}
 	if (iter>=max_iter)
 		info("Exceeds max_iter in multiclass_prob\n");
-	for(t=0;t<k;t++) free(Q[t]);
-	free(Q);
-	free(Qp);
+	for(t=0;t<k;t++) Free(Q[t]);
+	Free(Q);
+	Free(Qp);
 }
 
 // Cross-validation decision values for probability estimates
@@ -1967,12 +1976,12 @@ static void svm_binary_svc_probability(
 			svm_free_and_destroy_model(&submodel);
 			svm_destroy_param(&subparam);
 		}
-		free(subprob.x);
-		free(subprob.y);
+		Free(subprob.x);
+		Free(subprob.y);
 	}		
 	sigmoid_train(prob->l,dec_values,prob->y,probA,probB);
-	free(dec_values);
-	free(perm);
+	Free(dec_values);
+	Free(perm);
 }
 
 // Return parameter of a Laplace distribution 
@@ -2003,7 +2012,7 @@ static double svm_svr_probability(
 			mae+=fabs(ymv[i]);
 	mae /= (prob->l-count);
 	info("Prob. model for test data: target value = predicted value + z,\nz: Laplace distribution e^(-|z|/sigma)/(2sigma),sigma= %g\n",mae);
-	free(ymv);
+	Free(ymv);
 	return mae;
 }
 
@@ -2064,7 +2073,7 @@ static void svm_group_classes(const svm_problem *prob, int *nr_class_ret, int **
 	*label_ret = label;
 	*start_ret = start;
 	*count_ret = count;
-	free(data_label);
+	Free(data_label);
 }
 
 //
@@ -2074,7 +2083,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 {
 	svm_model *model = Malloc(svm_model,1);
 	model->param = *param;
-	model->free_sv = 0;	// XXX
+	model->free_sv = 0;	// SVs will be pointers into data, don't free them
 
 	if(param->svm_type == ONE_CLASS ||
 	   param->svm_type == EPSILON_SVR ||
@@ -2115,7 +2124,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 				++j;
 			}		
 
-		free(f.alpha);
+		Free(f.alpha);
 	}
 	else
 	{
@@ -2200,8 +2209,8 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 				for(k=0;k<cj;k++)
 					if(!nonzero[sj+k] && fabs(f[p].alpha[ci+k]) > 0)
 						nonzero[sj+k] = true;
-				free(sub_prob.x);
-				free(sub_prob.y);
+				Free(sub_prob.x);
+				Free(sub_prob.y);
 				++p;
 			}
 
@@ -2291,20 +2300,20 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 				++p;
 			}
 		
-		free(label);
-		free(probA);
-		free(probB);
-		free(count);
-		free(perm);
-		free(start);
-		free(x);
-		free(weighted_C);
-		free(nonzero);
+		Free(label);
+		Free(probA);
+		Free(probB);
+		Free(count);
+		Free(perm);
+		Free(start);
+		Free(x);
+		Free(weighted_C);
+		Free(nonzero);
 		for(i=0;i<nr_class*(nr_class-1)/2;i++)
-			free(f[i].alpha);
-		free(f);
-		free(nz_count);
-		free(nz_start);
+			Free(f[i].alpha);
+		Free(f);
+		Free(nz_count);
+		Free(nz_start);
 	}
 	return model;
 }
@@ -2363,11 +2372,11 @@ void svm_cross_validation(const svm_problem *prob, const svm_parameter *param, i
 		fold_start[0]=0;
 		for (i=1;i<=nr_fold;i++)
 			fold_start[i] = fold_start[i-1]+fold_count[i-1];
-		free(start);	
-		free(label);
-		free(count);	
-		free(index);
-		free(fold_count);
+		Free(start);	
+		Free(label);
+		Free(count);	
+		Free(index);
+		Free(fold_count);
 	}
 	else
 	{
@@ -2412,17 +2421,17 @@ void svm_cross_validation(const svm_problem *prob, const svm_parameter *param, i
 			double *prob_estimates=Malloc(double,svm_get_nr_class(submodel));
 			for(j=begin;j<end;j++)
 				target[perm[j]] = svm_predict_probability(submodel,prob->x[perm[j]],prob_estimates);
-			free(prob_estimates);			
+			Free(prob_estimates);			
 		}
 		else
 			for(j=begin;j<end;j++)
 				target[perm[j]] = svm_predict(submodel,prob->x[perm[j]]);
 		svm_free_and_destroy_model(&submodel);
-		free(subprob.x);
-		free(subprob.y);
+		Free(subprob.x);
+		Free(subprob.y);
 	}		
-	free(fold_start);
-	free(perm);	
+	Free(fold_start);
+	Free(perm);	
 }
 
 
@@ -2455,6 +2464,7 @@ double svm_get_svr_probability(const svm_model *model)
 	}
 }
 
+// Fills dec_values with predictions, returns the label if classifying
 double svm_predict_values(const svm_model *model, const svm_node *x, double* dec_values)
 {
 	int i;
@@ -2481,7 +2491,7 @@ double svm_predict_values(const svm_model *model, const svm_node *x, double* dec
 		
 		double *kvalue = Malloc(double,l);
 		for(i=0;i<l;i++)
-			kvalue[i] = Kernel::k_function(x,model->SV[i],model->param);
+		  kvalue[i] = Kernel::k_function(x,model->SV[i],model->param);
 
 		int *start = Malloc(int,nr_class);
 		start[0] = 0;
@@ -2524,9 +2534,9 @@ double svm_predict_values(const svm_model *model, const svm_node *x, double* dec
 			if(vote[i] > vote[vote_max_idx])
 				vote_max_idx = i;
 
-		free(kvalue);
-		free(start);
-		free(vote);
+		Free(kvalue);
+		Free(start);
+		Free(vote);
 		return model->label[vote_max_idx];
 	}
 }
@@ -2542,7 +2552,7 @@ double svm_predict(const svm_model *model, const svm_node *x)
 	else 
 		dec_values = Malloc(double, nr_class*(nr_class-1)/2);
 	double pred_result = svm_predict_values(model, x, dec_values);
-	free(dec_values);
+	Free(dec_values);
 	return pred_result;
 }
 
@@ -2576,9 +2586,9 @@ double svm_predict_probability(
 			if(prob_estimates[i] > prob_estimates[prob_max_idx])
 				prob_max_idx = i;
 		for(i=0;i<nr_class;i++)
-			free(pairwise_prob[i]);
-		free(dec_values);
-		free(pairwise_prob);	     
+			Free(pairwise_prob[i]);
+		Free(dec_values);
+		Free(pairwise_prob);	     
 		return model->label[prob_max_idx];
 	}
 	else 
@@ -2683,255 +2693,253 @@ int svm_save_model(const char *model_file_name, const svm_model *model)
 }
 
 static char *line = NULL;
-static int max_line_len;
+static int max_line_len = 1024;
 
-static char* readline(FILE *input)
+char* read_line(FILE *input)
 {
-	int len;
+  int len;
+  if(fgets(line,max_line_len,input) == NULL)
+    return NULL;
 
-	if(fgets(line,max_line_len,input) == NULL)
-		return NULL;
-
-	while(strrchr(line,'\n') == NULL)
-	{
-		max_line_len *= 2;
-		line = (char *) realloc(line,max_line_len);
-		len = (int) strlen(line);
-		if(fgets(line+len,max_line_len-len,input) == NULL)
-			break;
-	}
-	return line;
+  while(strrchr(line,'\n') == NULL){
+    max_line_len *= 2;
+    line = (char *) Realloc(line,max_line_len,char);
+    len = (int) strlen(line);
+    if(fgets(line+len,max_line_len-len,input) == NULL)
+      break;
+  }
+  return line;
 }
 
-svm_model *svm_load_model(const char *model_file_name)
-{
-	FILE *fp = fopen(model_file_name,"rb");
-	if(fp==NULL) return NULL;
+// svm_model *svm_load_model(const char *model_file_name)
+// {
+// 	FILE *fp = fopen(model_file_name,"rb");
+// 	if(fp==NULL) return NULL;
 	
-	// read parameters
+// 	// read parameters
 
-	svm_model *model = Malloc(svm_model,1);
-	svm_parameter& param = model->param;
-	model->rho = NULL;
-	model->probA = NULL;
-	model->probB = NULL;
-	model->label = NULL;
-	model->nSV = NULL;
+// 	svm_model *model = Malloc(svm_model,1);
+// 	svm_parameter& param = model->param;
+// 	model->rho = NULL;
+// 	model->probA = NULL;
+// 	model->probB = NULL;
+// 	model->label = NULL;
+// 	model->nSV = NULL;
 
-	char cmd[81];
-	while(1)
-	{
-		fscanf(fp,"%80s",cmd);
+// 	char cmd[81];
+// 	while(1)
+// 	{
+// 		fscanf(fp,"%80s",cmd);
 
-		if(strcmp(cmd,"svm_type")==0)
-		{
-			fscanf(fp,"%80s",cmd);
-			int i;
-			for(i=0;svm_type_table[i];i++)
-			{
-				if(strcmp(svm_type_table[i],cmd)==0)
-				{
-					param.svm_type=i;
-					break;
-				}
-			}
-			if(svm_type_table[i] == NULL)
-			{
-				fprintf(stderr,"unknown svm type.\n");
-				free(model->rho);
-				free(model->label);
-				free(model->nSV);
-				free(model);
-				return NULL;
-			}
-		}
-		else if(strcmp(cmd,"kernel_type")==0)
-		{		
-			fscanf(fp,"%80s",cmd);
-			int i;
-			for(i=0;kernel_type_table[i];i++)
-			{
-				if(strcmp(kernel_type_table[i],cmd)==0)
-				{
-					param.kernel_type=i;
-					break;
-				}
-			}
-			if(kernel_type_table[i] == NULL)
-			{
-				fprintf(stderr,"unknown kernel function.\n");
-				free(model->rho);
-				free(model->label);
-				free(model->nSV);
-				free(model);
-				return NULL;
-			}
-		}
-		else if(strcmp(cmd,"degree")==0)
-			fscanf(fp,"%d",&param.degree);
-		else if(strcmp(cmd,"gamma")==0)
-			fscanf(fp,"%lf",&param.gamma);
-		else if(strcmp(cmd,"coef0")==0)
-			fscanf(fp,"%lf",&param.coef0);
-		else if(strcmp(cmd,"nr_class")==0)
-			fscanf(fp,"%d",&model->nr_class);
-		else if(strcmp(cmd,"total_sv")==0)
-			fscanf(fp,"%d",&model->l);
-		else if(strcmp(cmd,"rho")==0)
-		{
-			int n = model->nr_class * (model->nr_class-1)/2;
-			model->rho = Malloc(double,n);
-			for(int i=0;i<n;i++)
-				fscanf(fp,"%lf",&model->rho[i]);
-		}
-		else if(strcmp(cmd,"label")==0)
-		{
-			int n = model->nr_class;
-			model->label = Malloc(int,n);
-			for(int i=0;i<n;i++)
-				fscanf(fp,"%d",&model->label[i]);
-		}
-		else if(strcmp(cmd,"probA")==0)
-		{
-			int n = model->nr_class * (model->nr_class-1)/2;
-			model->probA = Malloc(double,n);
-			for(int i=0;i<n;i++)
-				fscanf(fp,"%lf",&model->probA[i]);
-		}
-		else if(strcmp(cmd,"probB")==0)
-		{
-			int n = model->nr_class * (model->nr_class-1)/2;
-			model->probB = Malloc(double,n);
-			for(int i=0;i<n;i++)
-				fscanf(fp,"%lf",&model->probB[i]);
-		}
-		else if(strcmp(cmd,"nr_sv")==0)
-		{
-			int n = model->nr_class;
-			model->nSV = Malloc(int,n);
-			for(int i=0;i<n;i++)
-				fscanf(fp,"%d",&model->nSV[i]);
-		}
-		else if(strcmp(cmd,"SV")==0)
-		{
-			while(1)
-			{
-				int c = getc(fp);
-				if(c==EOF || c=='\n') break;	
-			}
-			break;
-		}
-		else
-		{
-			fprintf(stderr,"unknown text in model file: [%s]\n",cmd);
-			free(model->rho);
-			free(model->label);
-			free(model->nSV);
-			free(model);
-			return NULL;
-		}
-	}
+// 		if(strcmp(cmd,"svm_type")==0)
+// 		{
+// 			fscanf(fp,"%80s",cmd);
+// 			int i;
+// 			for(i=0;svm_type_table[i];i++)
+// 			{
+// 				if(strcmp(svm_type_table[i],cmd)==0)
+// 				{
+// 					param.svm_type=i;
+// 					break;
+// 				}
+// 			}
+// 			if(svm_type_table[i] == NULL)
+// 			{
+// 				fprintf(stderr,"unknown svm type.\n");
+// 				Free(model->rho);
+// 				Free(model->label);
+// 				Free(model->nSV);
+// 				Free(model);
+// 				return NULL;
+// 			}
+// 		}
+// 		else if(strcmp(cmd,"kernel_type")==0)
+// 		{		
+// 			fscanf(fp,"%80s",cmd);
+// 			int i;
+// 			for(i=0;kernel_type_table[i];i++)
+// 			{
+// 				if(strcmp(kernel_type_table[i],cmd)==0)
+// 				{
+// 					param.kernel_type=i;
+// 					break;
+// 				}
+// 			}
+// 			if(kernel_type_table[i] == NULL)
+// 			{
+// 				fprintf(stderr,"unknown kernel function.\n");
+// 				Free(model->rho);
+// 				Free(model->label);
+// 				Free(model->nSV);
+// 				Free(model);
+// 				return NULL;
+// 			}
+// 		}
+// 		else if(strcmp(cmd,"degree")==0)
+// 			fscanf(fp,"%d",&param.degree);
+// 		else if(strcmp(cmd,"gamma")==0)
+// 			fscanf(fp,"%lf",&param.gamma);
+// 		else if(strcmp(cmd,"coef0")==0)
+// 			fscanf(fp,"%lf",&param.coef0);
+// 		else if(strcmp(cmd,"nr_class")==0)
+// 			fscanf(fp,"%d",&model->nr_class);
+// 		else if(strcmp(cmd,"total_sv")==0)
+// 			fscanf(fp,"%d",&model->l);
+// 		else if(strcmp(cmd,"rho")==0)
+// 		{
+// 			int n = model->nr_class * (model->nr_class-1)/2;
+// 			model->rho = Malloc(double,n);
+// 			for(int i=0;i<n;i++)
+// 				fscanf(fp,"%lf",&model->rho[i]);
+// 		}
+// 		else if(strcmp(cmd,"label")==0)
+// 		{
+// 			int n = model->nr_class;
+// 			model->label = Malloc(int,n);
+// 			for(int i=0;i<n;i++)
+// 				fscanf(fp,"%d",&model->label[i]);
+// 		}
+// 		else if(strcmp(cmd,"probA")==0)
+// 		{
+// 			int n = model->nr_class * (model->nr_class-1)/2;
+// 			model->probA = Malloc(double,n);
+// 			for(int i=0;i<n;i++)
+// 				fscanf(fp,"%lf",&model->probA[i]);
+// 		}
+// 		else if(strcmp(cmd,"probB")==0)
+// 		{
+// 			int n = model->nr_class * (model->nr_class-1)/2;
+// 			model->probB = Malloc(double,n);
+// 			for(int i=0;i<n;i++)
+// 				fscanf(fp,"%lf",&model->probB[i]);
+// 		}
+// 		else if(strcmp(cmd,"nr_sv")==0)
+// 		{
+// 			int n = model->nr_class;
+// 			model->nSV = Malloc(int,n);
+// 			for(int i=0;i<n;i++)
+// 				fscanf(fp,"%d",&model->nSV[i]);
+// 		}
+// 		else if(strcmp(cmd,"SV")==0)
+// 		{
+// 			while(1)
+// 			{
+// 				int c = getc(fp);
+// 				if(c==EOF || c=='\n') break;	
+// 			}
+// 			break;
+// 		}
+// 		else
+// 		{
+// 			fprintf(stderr,"unknown text in model file: [%s]\n",cmd);
+// 			Free(model->rho);
+// 			Free(model->label);
+// 			Free(model->nSV);
+// 			Free(model);
+// 			return NULL;
+// 		}
+// 	}
 
-	// read sv_coef and SV
+// 	// read sv_coef and SV
 
-	int elements = 0;
-	long pos = ftell(fp);
+// 	int elements = 0;
+// 	long pos = ftell(fp);
 
-	max_line_len = 1024;
-	line = Malloc(char,max_line_len);
-	char *p,*endptr,*idx,*val;
+// 	max_line_len = 1024;
+// 	line = Malloc(char,max_line_len);
+// 	char *p,*endptr,*idx,*val;
 
-	while(readline(fp)!=NULL)
-	{
-		p = strtok(line,":");
-		while(1)
-		{
-			p = strtok(NULL,":");
-			if(p == NULL)
-				break;
-			++elements;
-		}
-	}
-	elements += model->l;
+// 	while(read_line(fp)!=NULL)
+// 	{
+// 		p = strtok(line,":");
+// 		while(1)
+// 		{
+// 			p = strtok(NULL,":");
+// 			if(p == NULL)
+// 				break;
+// 			++elements;
+// 		}
+// 	}
+// 	elements += model->l;
 
-	fseek(fp,pos,SEEK_SET);
+// 	fseek(fp,pos,SEEK_SET);
 
-	int m = model->nr_class - 1;
-	int l = model->l;
-	model->sv_coef = Malloc(double *,m);
-	int i;
-	for(i=0;i<m;i++)
-		model->sv_coef[i] = Malloc(double,l);
-	model->SV = Malloc(svm_node*,l);
-	svm_node *x_space = NULL;
-	if(l>0) x_space = Malloc(svm_node,elements);
+// 	int m = model->nr_class - 1;
+// 	int l = model->l;
+// 	model->sv_coef = Malloc(double *,m);
+// 	int i;
+// 	for(i=0;i<m;i++)
+// 		model->sv_coef[i] = Malloc(double,l);
+// 	model->SV = Malloc(svm_node*,l);
+// 	svm_node *x_space = NULL;
+// 	if(l>0) x_space = Malloc(svm_node,elements);
 
-	int j=0;
-	for(i=0;i<l;i++)
-	{
-		readline(fp);
-		model->SV[i] = &x_space[j];
+// 	int j=0;
+// 	for(i=0;i<l;i++)
+// 	{
+// 		read_line(fp);
+// 		model->SV[i] = &x_space[j];
 
-		p = strtok(line, " \t");
-		model->sv_coef[0][i] = strtod(p,&endptr);
-		for(int k=1;k<m;k++)
-		{
-			p = strtok(NULL, " \t");
-			model->sv_coef[k][i] = strtod(p,&endptr);
-		}
+// 		p = strtok(line, " \t");
+// 		model->sv_coef[0][i] = strtod(p,&endptr);
+// 		for(int k=1;k<m;k++)
+// 		{
+// 			p = strtok(NULL, " \t");
+// 			model->sv_coef[k][i] = strtod(p,&endptr);
+// 		}
 
-		while(1)
-		{
-			idx = strtok(NULL, ":");
-			val = strtok(NULL, " \t");
+// 		while(1)
+// 		{
+// 			idx = strtok(NULL, ":");
+// 			val = strtok(NULL, " \t");
 
-			if(val == NULL)
-				break;
-			x_space[j].index = (int) strtol(idx,&endptr,10);
-			x_space[j].value = strtod(val,&endptr);
+// 			if(val == NULL)
+// 				break;
+// 			x_space[j].index = (int) strtol(idx,&endptr,10);
+// 			x_space[j].value = strtod(val,&endptr);
 
-			++j;
-		}
-		x_space[j++].index = -1;
-	}
-	free(line);
+// 			++j;
+// 		}
+// 		x_space[j++].index = -1;
+// 	}
+// 	Free(line);
 
-	if (ferror(fp) != 0 || fclose(fp) != 0)
-		return NULL;
+// 	if (ferror(fp) != 0 || fclose(fp) != 0)
+// 		return NULL;
 
-	model->free_sv = 1;	// XXX
-	return model;
-}
+// 	model->free_sv = 1;	// XXX
+// 	return model;
+// }
 
 void svm_free_model_content(svm_model* model_ptr)
 {
 	if(model_ptr->free_sv && model_ptr->l > 0 && model_ptr->SV != NULL)
-		free((void *)(model_ptr->SV[0]));
+		Free((model_ptr->SV[0]));
 	if(model_ptr->sv_coef)
 	{
 		for(int i=0;i<model_ptr->nr_class-1;i++)
-			free(model_ptr->sv_coef[i]);
+			Free(model_ptr->sv_coef[i]);
 	}
 
-	free(model_ptr->SV);
+	Free(model_ptr->SV);
 	model_ptr->SV = NULL;
 
-	free(model_ptr->sv_coef);
+	Free(model_ptr->sv_coef);
 	model_ptr->sv_coef = NULL;
 
-	free(model_ptr->rho);
+	Free(model_ptr->rho);
 	model_ptr->rho = NULL;
 
-	free(model_ptr->label);
+	Free(model_ptr->label);
 	model_ptr->label= NULL;
 
-	free(model_ptr->probA);
+	Free(model_ptr->probA);
 	model_ptr->probA = NULL;
 
-	free(model_ptr->probB);
+	Free(model_ptr->probB);
 	model_ptr->probB= NULL;
 
-	free(model_ptr->nSV);
+	Free(model_ptr->nSV);
 	model_ptr->nSV = NULL;
 }
 
@@ -2940,15 +2948,15 @@ void svm_free_and_destroy_model(svm_model** model_ptr_ptr)
 	if(model_ptr_ptr != NULL && *model_ptr_ptr != NULL)
 	{
 		svm_free_model_content(*model_ptr_ptr);
-		free(*model_ptr_ptr);
+		Free(*model_ptr_ptr);
 		*model_ptr_ptr = NULL;
 	}
 }
 
 void svm_destroy_param(svm_parameter* param)
 {
-	free(param->weight_label);
-	free(param->weight);
+	Free(param->weight_label);
+	Free(param->weight);
 }
 
 const char *svm_check_parameter(const svm_problem *prob, const svm_parameter *param)
@@ -3059,14 +3067,14 @@ const char *svm_check_parameter(const svm_problem *prob, const svm_parameter *pa
 				int n2 = count[j];
 				if(param->nu*(n1+n2)/2 > min(n1,n2))
 				{
-					free(label);
-					free(count);
+					Free(label);
+					Free(count);
 					return "specified nu is infeasible";
 				}
 			}
 		}
-		free(label);
-		free(count);
+		Free(label);
+		Free(count);
 	}
 
 	return NULL;
@@ -3080,10 +3088,444 @@ int svm_check_probability_model(const svm_model *model)
 		 model->probA!=NULL);
 }
 
-void svm_set_print_string_function(void (*print_func)(const char *))
+// void svm_set_print_string_function(void (*print_func)(const char *))
+// {
+// 	if(print_func == NULL)
+// 		svm_print_string = &print_string_stdout;
+// 	else
+// 		svm_print_string = print_func;
+// }
+
+
+// R Interface Functions
+
+/* get the list element named str, or return NULL */
+static SEXP getListElement(SEXP list, const char *str, int errmissing)
 {
-	if(print_func == NULL)
-		svm_print_string = &print_string_stdout;
+  SEXP elmt = R_NilValue, names = getAttrib(list, R_NamesSymbol);
+  R_len_t n = length(list), i;
+     
+  for (i = 0; i < n; i++)
+    if(strcmp(CHAR(STRING_ELT(names, i)), str) == 0) {
+      elmt = VECTOR_ELT(list, i);
+      break;
+    }
+  if(!(i < n) && errmissing){
+    error("Missing required element \"%s\"",str);
+  }
+  else{
+    return elmt;
+  }
+}
+
+
+/* get index of list element named str */
+static int getListElementIndex(SEXP list, const char *str)
+{
+  SEXP names = getAttrib(list, R_NamesSymbol);
+  int i;
+  R_len_t n = length(list);
+  for (i = 0; i < n; i++)
+    if(strcmp(CHAR(STRING_ELT(names, i)), str) == 0) {
+      break;
+    }
+  if(!(i < n)){
+    error("Missing required element \"%s\"",str);
+  }
+  else{
+    return i;
+  }
+}
+
+/* get the list element named str, or return NULL */
+static void printListElements(SEXP list){
+  SEXP names = getAttrib(list, R_NamesSymbol);
+     
+  for (R_len_t i = 0; i < length(list); i++){
+    Rprintf("%3d: %s\n", i, CHAR(STRING_ELT(names, i)));
+  }
+}
+
+static int DEBUG_SVMLIB = 1;
+
+extern "C" {
+void svm_set_debug(int *d){
+  DEBUG_SVMLIB = *d;
+}
+
+
+
+static void svm_free_nodes(SEXP s){
+  if(TYPEOF(s) != EXTPTRSXP){
+    error("argument not external pointer");
+  }
+  struct svm_node *nodes = (struct svm_node *) R_ExternalPtrAddr(s);
+  Free(nodes);
+  if(DEBUG_SVMLIB){
+    Rprintf("Freeing SVM problem\n");
+  }
+}
+
+SEXP svm_read_problem(SEXP fname)
+{
+  const char *filename = CHAR(STRING_ELT(fname,0));
+
+  struct svm_problem prob;
+  struct svm_node *x_space;
+  int elements, max_index, inst_max_index, i, j;
+  
+
+  FILE *fp = fopen(filename,"r");
+  char *endptr;
+  char *idx, *val, *label;
+
+  if(fp == NULL) {
+    error("Can't open input file %s\n",filename);
+  }
+
+  prob.l = 0;
+  elements = 0;
+
+  line = Calloc(max_line_len,char);
+
+  if(DEBUG_SVMLIB){ Rprintf("Starting processing of %s\n",filename); }
+  while(1)
+    {
+      if(read_line(fp)==NULL){
+	break;
+      }
+
+      char *p = strtok(line," \t"); // label
+
+      // features
+      while(1)
+	{
+	  p = strtok(NULL," \t");
+	  if(p == NULL || *p == '\n') // check '\n' as ' ' may be after the last feature
+	    break;
+	  ++elements;
+	}
+      ++elements;
+      ++prob.l;
+    }
+  rewind(fp);
+
+  if(DEBUG_SVMLIB){ Rprintf("Finished first pass of %s\n",filename);}
+
+  SEXP y;			/* Easier than coercing raw double* to SEXP */
+  PROTECT(y = allocVector(REALSXP,prob.l));
+  prob.y = REAL(y);  
+  prob.x = Calloc(prob.l,struct svm_node *);
+  x_space = Calloc(elements, struct svm_node);
+
+  max_index = 0;
+  j=0;
+  int failure = 0;
+  for(i=0;i<prob.l;i++) {
+    inst_max_index = -1; // strtol gives 0 if wrong format, and precomputed kernel has <index> start from 0
+    read_line(fp);
+    prob.x[i] = &x_space[j];
+    label = strtok(line," \t\n");
+	    if(label == NULL){
+      failure = 1;
+      break;
+    }
+
+    prob.y[i] = strtod(label,&endptr);
+    if(endptr == label || *endptr != '\0'){
+      failure = 1;
+      break;
+    }
+
+    int errno;			/* Not sure this is right */
+    while(1)
+      {
+	idx = strtok(NULL,":");
+	val = strtok(NULL," \t");
+
+	if(val == NULL)
+	  break;
+
+	errno = 0;
+	x_space[j].index = (int) strtol(idx,&endptr,10);
+	if(endptr == idx || errno != 0 || *endptr != '\0' || x_space[j].index <= inst_max_index){
+	  failure = 1;
+	  break;
+	}
 	else
-		svm_print_string = print_func;
+	  inst_max_index = x_space[j].index;
+
+	errno = 0;
+	x_space[j].value = strtod(val,&endptr);
+	if(endptr == val || errno != 0 || (*endptr != '\0' && !isspace(*endptr))){
+	  failure = 1;
+	  break;
+	}
+	++j;
+      }
+
+    if(inst_max_index > max_index)
+      max_index = inst_max_index;
+    x_space[j++].index = -1;
+  }
+
+  if(failure){
+    Free(x_space);
+    Free(line);
+    Free(prob.y);
+    error("Error at input line %d",i+1);
+  }
+
+  fclose(fp);
+  if(DEBUG_SVMLIB){ Rprintf("Finished processing of %s\n",filename);}
+
+  // Track all nodes
+  SEXP xspace;
+  PROTECT(xspace = R_MakeExternalPtr(x_space, R_NilValue, R_NilValue));  
+  R_RegisterCFinalizer(xspace, svm_free_nodes);  /* Register finalizer for GC */
+
+  // Provide a vectore of training data as external pointers
+  SEXP x;
+  PROTECT(x = allocVector(VECSXP,prob.l));
+  for(int i=0; i < prob.l; i++){
+    SET_VECTOR_ELT(x,i,R_MakeExternalPtr(prob.x[i], R_NilValue, R_NilValue));
+  }
+  
+  SEXP nRows;
+  PROTECT(nRows = allocVector(INTSXP,1));
+  INTEGER(nRows)[0] = prob.l;
+
+  SEXP nCols;
+  PROTECT(nCols = allocVector(INTSXP,1));
+  INTEGER(nCols)[0] = max_index;
+
+  SEXP result;
+  PROTECT(result = allocVector(VECSXP,5));
+  SET_VECTOR_ELT(result, 0, nRows);
+  SET_VECTOR_ELT(result, 1, nCols);
+  SET_VECTOR_ELT(result, 2, y);
+  SET_VECTOR_ELT(result, 3, x);
+  SET_VECTOR_ELT(result, 4, xspace);
+
+  Free(line);
+  Free(prob.x);			// Copied pointers
+  UNPROTECT(6);
+  return result;
+}
+
+// Interface function for external call from R
+SEXP svmtrain(SEXP pairArgs){
+  SEXP args;
+  PROTECT(args = PairToVectorList(pairArgs)); // For ease of argument lookup
+
+  struct svm_parameter par;
+  struct svm_problem   prob;
+  struct svm_model    *model = NULL;
+  int i, ii;
+  const char* s;
+
+  par.svm_type    = INTEGER(getListElement(args,"type",1))[0];
+  par.kernel_type = INTEGER(getListElement(args,"kernel",1))[0];
+  par.degree      = INTEGER(getListElement(args,"degree",1))[0];
+  par.gamma       = REAL(getListElement(args,"gamma",1))[0];
+  par.coef0       = REAL(getListElement(args,"coef0",1))[0];
+  par.cache_size  = REAL(getListElement(args,"cachesize",1))[0];
+  par.eps         = REAL(getListElement(args,"tolerance",1))[0];
+  par.C           = REAL(getListElement(args,"cost",1))[0];
+  par.nu          = REAL(getListElement(args,"nu",1))[0];
+  par.nr_weight   = INTEGER(getListElement(args,"nWeights",1))[0];
+  if (par.nr_weight > 0) {
+    par.weight      = REAL(getListElement(args,"weights",1));
+    par.weight_label = INTEGER(getListElement(args,"weightlabels",1));
+  }
+  else{
+    par.weight = NULL;
+    par.weight_label = NULL;
+  }
+  par.p           = REAL(getListElement(args,"epsilon",1))[0];
+  par.shrinking   = INTEGER(getListElement(args,"shrinking",1))[0];
+  int probability = INTEGER(getListElement(args,"probability",1))[0];
+  par.probability = probability;
+
+  /* set problem */
+  prob.l = INTEGER(getListElement(args,"nRows",1))[0];
+  prob.y = REAL(getListElement(args,"y",1));
+
+  SEXP x = getListElement(args,"x",1);
+  prob.x = (struct svm_node **) Malloc(struct svm_node *, prob.l);
+  for(i=0; i < prob.l; i++){
+    prob.x[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(x,i));
+  }
+
+  int seed = INTEGER(getListElement(args,"seed",1))[0];
+
+  // Assume return list is already set up with appropriate fields as
+  // this is easier in R
+  SEXP ret = getListElement(args,"ret",1); 
+
+  // Save the support vectors as an external pointer
+  int model_idx = getListElementIndex(ret,"SV");
+
+  /* check parameters & copy error message */
+  s = svm_check_parameter(&prob, &par);
+  if (s) {
+    error(s);
+  } 
+  /* set seed */
+  srand(seed);
+
+  if(DEBUG_SVMLIB){
+    Rprintf("Beginning training\n");
+  }
+
+  /* call svm_train */
+  model = svm_train(&prob, &par);
+    
+  int totSV = model->l;
+  INTEGER(getListElement(ret,"tot.nSV",1))[0] = totSV;
+  int nclasses = model->nr_class;
+  INTEGER(getListElement(ret,"nclasses",1))[0] = nclasses;
+  double *rho = REAL(getListElement(ret,"rho",1));    
+  memcpy (rho, model->rho, nclasses * (nclasses - 1)/2 * sizeof(double));
+
+  // Copy over pointers to support vectors. Make sure to save the
+  // x_space of the problem in an R object as the model has pointers
+  // into it now
+  SEXP SV;
+  PROTECT(SV = allocVector(VECSXP,totSV));
+  for(i=0; i < totSV; i++){
+    SET_VECTOR_ELT(SV,i,R_MakeExternalPtr(model->SV[i], R_NilValue, R_NilValue));
+  }
+  SET_VECTOR_ELT(ret, model_idx, SV);
+
+  // Alternate version that uses internal pointers
+  // struct svm_node **SV = Malloc(struct svm_node *, totSV);
+  // memcpy(SV, model->SV, totSV*sizeof(struct svm_node *)); 
+  // SET_VECTOR_ELT(ret, model_idx, R_MakeExternalPtr(SV, R_NilValue, R_NilValue));
+
+  if (probability && par.svm_type != ONE_CLASS) {
+    if (par.svm_type == EPSILON_SVR || par.svm_type == NU_SVR)
+      REAL(getListElement(ret,"sigma",1))[0] = svm_get_svr_probability(model);
+    else {
+      double *probA = REAL(getListElement(ret,"probA",1));
+      double *probB = REAL(getListElement(ret,"probB",1));
+      memcpy(probA, model->probA,
+	     nclasses * (nclasses - 1)/2 * sizeof(double));
+      memcpy(probB, model->probB,
+	     nclasses * (nclasses - 1)/2 * sizeof(double));
+    }
+  }
+
+  double *coefs = REAL(getListElement(ret,"coefs",1));
+
+  for (i = 0; i < nclasses-1; i++)
+    memcpy (coefs + i * totSV, model->sv_coef[i],  totSV * sizeof (double));
+	
+  int *labels = INTEGER(getListElement(ret,"labels",1));
+  int *nSV = INTEGER(getListElement(ret,"nSV",1));
+
+  if (par.svm_type < 2) {
+    memcpy (labels, model->label, nclasses * sizeof(int));
+    memcpy (nSV, model->nSV, nclasses * sizeof(int));
+  }
+	
+  svm_free_and_destroy_model(&model);
+  // Don't free the problem data as it is handled by R
+
+  Free(prob.x);			// Free pointers to SVs
+  UNPROTECT(2);
+  return R_NilValue;
+}
+
+SEXP svmpredict(SEXP pairArgs){
+  SEXP args;
+  PROTECT(args = PairToVectorList(pairArgs)); // For ease of argument lookup
+
+  if(DEBUG_SVMLIB){
+    Rprintf("Args to svmmpredict\n");
+    printListElements(args);
+  }
+
+  int xr = INTEGER(getListElement(args,"nRows",1))[0];
+  int probability = INTEGER(getListElement(args,"probability",1))[0];
+  SEXP model = getListElement(args,"model",1);
+  SEXP ret   = getListElement(args,"ret",1);
+
+  SEXP trainS = getListElement(args,"train",1);
+  struct svm_node **train = (struct svm_node **) Malloc(struct svm_node *, xr);
+  for(int i=0; i<xr; i++){
+    train[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(trainS,i));
+  }
+
+  struct svm_model m;
+  int i;
+    
+  /* set up model */
+  m.l		= INTEGER(getListElement(model,"tot.nSV",1))[0];
+  int nclasses	= INTEGER(getListElement(model,"nclasses",1))[0];
+  m.nr_class	= nclasses;
+  m.sv_coef	= (double **) Malloc(double *, m.nr_class);
+  double *coefs = REAL(getListElement(model,"coefs",1)); 
+  // Need pointers into coefs
+  for (i = 0; i < m.nr_class - 1; i++) {
+    m.sv_coef[i] = (double *) coefs + i*m.l;
+  }
+    
+  SEXP SV = getListElement(model,"SV",1);
+  m.SV = (struct svm_node **) Malloc(struct svm_node *,m.l);
+  for(i=0; i < m.l; i++){
+    m.SV[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(SV,i));
+  }
+
+  m.rho      = REAL(getListElement(model,"rho",1));
+  m.label    = INTEGER(getListElement(model,"labels",1));;
+  m.nSV      = INTEGER(getListElement(model,"nSV",1));;
+
+  /* set up parameter */
+  m.param.svm_type    = INTEGER(getListElement(model,"type",1))[0];
+  m.param.kernel_type = INTEGER(getListElement(model,"kernel",1))[0];
+  m.param.degree      = INTEGER(getListElement(model,"degree",1))[0];
+  m.param.gamma       = REAL(getListElement(model,"gamma",1))[0];
+  m.param.coef0       = REAL(getListElement(model,"coef0",1))[0];
+  m.param.probability = probability;
+  m.free_sv           = 0;
+
+  // SEXP ret = getListElement(args,"ret",1); 
+  double *pred	= REAL(getListElement(ret,"pred",1));
+  double *dec	= REAL(getListElement(ret,"dec",1));
+  double *prob	= REAL(getListElement(ret,"prob",1));
+
+  if(DEBUG_SVMLIB){
+    Rprintf("Beginning prediction\n");
+  }
+
+  /* call svm-predict-function for each x-row, possibly using probability 
+     estimator, if requested */
+  if (probability && svm_check_probability_model(&m)) {
+    if(DEBUG_SVMLIB){
+      Rprintf("svmmpredict probability\n");
+    }
+
+    m.probA    = REAL(getListElement(model,"probA",1));
+    m.probB    = REAL(getListElement(model,"probB",1));
+    for (i = 0; i < xr; i++)
+      pred[i] = svm_predict_probability(&m, train[i], prob + i * nclasses);
+  } else {
+    if(DEBUG_SVMLIB){
+      Rprintf("svmmpredict values\n");
+    }
+
+    for (i = 0; i < xr; i++){
+      pred[i] = svm_predict_values(&m, train[i], dec + i * nclasses * (nclasses - 1) / 2);
+      // pred[i] = svm_predict(&m, train[i]);
+    }
+  }
+
+  Free(m.sv_coef);
+  Free(m.SV);
+  Free(train);
+  UNPROTECT(1);
+  return R_NilValue;
+}
+
 }
