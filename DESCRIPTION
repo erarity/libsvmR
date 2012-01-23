@@ -1,0 +1,14 @@
+Package: libsvmR
+Version: 0.1
+Date: Mon Jan 23 11:00:07 CST 2012
+Title: An Efficient Interface to libsvm
+Authors@R: c(person("Chris", "Kauffman", role = c("aut", "cre"),
+                     email = "kauffman@cs.umn.edu"))
+Author: Chris Kauffman
+Maintainer: Chris Kauffman <kauffman@cs.umn.edu>
+Depends: R (>= 2.14.0)
+Suggests: ROCR
+Description: Bindings to the libsvm library with routines to load svm style problems, train, predict, and save models. 
+License: GPL (>= 2)
+URL: 
+BugReports: 

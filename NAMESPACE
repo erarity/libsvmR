@@ -1,0 +1,10 @@
+useDynLib(libsvmR)
+
+export(svm, save.svmmodel, load.svmmodel, read.svmproblem,
+       "[.svmproblem",
+       crossvalidate, rocpr.aucs,
+       svmdebug.off, svmdebug.on)
+
+S3method(predict, svmmodel)
+S3method(print, svmmodel)
+S3method(print, svmproblem)

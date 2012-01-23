@@ -1,6 +1,14 @@
-svm <-
-function (x, ...)
-    UseMethod ("svm")
+## Types of problem
+typenames <-  c("C-classification",
+                "nu-classification",
+                "one-classification",
+                "eps-regression",
+                "nu-regression")
+## Kernels
+kernelnames <- c("linear",
+                 "polynomial",
+                 "radial",
+                 "sigmoid")
 
 predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
     stopifnot(class(model) == "svmmodel",
@@ -9,8 +17,8 @@ predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
               model$nCols == newdata$nCols,
               model$tot.nSV > 0)
 
-    ret <- list(pred = double(newdata$nRows),
-                dec = double(newdata$nRows * model$nclasses * (model$nclasses - 1) / 2),
+    ret <- list(class = double(newdata$nRows),
+                values = double(newdata$nRows * model$nclasses * (model$nclasses - 1) / 2),
                 prob = double(newdata$nRows * model$nclasses))
     
     .External("svmpredict",
@@ -18,31 +26,18 @@ predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
               nRows = newdata$nRows,
               probability = probability,
               model = model,
-              ret = ret)
-
-    ## PACKAGE = "e1071"
-    ## )
-    ## class(ret) <- "svm.prediction"
+              ret = ret,
+              PACKAGE = "libsvmR")
     ret
 }
 
 print.svmproblem <-  function(x,...) {
     cat("\nSVM Problem Data\n")
-    cat("Rows:",x$nRows,"\n")
+    cat("nRows:", x$nRows,"\n")
     cat("nCols:", x$nCols,"\n")
     cat("y: ",if(is.null(x$y)){"Missing"}else{"Present"},"\n\n")
 }
                  
-setMethod("[", "svmproblem", #signature(x = "svmproblem", i = "index", j = "missing", drop = "logical"),
-          function(x, i, j, ..., drop){
-              x$x <- x$x[i]
-              if(!is.null(x$y)){
-                  x$y <- y[i]
-              }
-              x
-          }
-)
-
 "[.svmproblem" <- function(x, i, j, ..., drop){
     x$x <- x$x[i]
     if(!is.null(x$y)){
@@ -53,22 +48,13 @@ setMethod("[", "svmproblem", #signature(x = "svmproblem", i = "index", j = "miss
 }
 
 
-
-
 print.svmmodel <-
 function (x, ...)
 {
     cat("\nCall:", deparse(x$call, 0.8 * getOption("width")), "\n", sep="\n")
     cat("Parameters:\n")
-    cat("   SVM-Type: ", c("C-classification",
-                           "nu-classification",
-                           "one-classification",
-                           "eps-regression",
-                           "nu-regression")[x$type+1], "\n")
-    cat(" SVM-Kernel: ", c("linear",
-                           "polynomial",
-                           "radial",
-                           "sigmoid")[x$kernel+1], "\n")
+    cat("   SVM-Type: ", typenames[x$type+1], "\n")
+    cat(" SVM-Kernel: ", kernelnames[x$kernel+1], "\n")
     if (x$type==0 || x$type==3 || x$type==4)
         cat("       cost: ", x$cost, "\n")
     if (x$kernel==1)
@@ -89,193 +75,19 @@ function (x, ...)
 
 }
 
-summary.svm <-
-function(object, ...)
-    structure(object, class="summary.svm")
-
-print.summary.svm <-
-function (x, ...)
-{
-    print.svm(x)
-    if (x$type<2) {
-        cat(" (", x$nSV, ")\n\n")
-        cat("\nNumber of Classes: ", x$nclasses, "\n\n")
-        cat("Levels:", if(is.numeric(x$levels)) "(as integer)", "\n", x$levels)
-    }
-    cat("\n\n")
-    if (x$type==2) cat("\nNumber of Classes: 1\n\n\n")
-
-    if ("MSE" %in% names(x)) {
-        cat(length (x$MSE), "-fold cross-validation on training data:\n\n", sep="")
-        cat("Total Mean Squared Error:", x$tot.MSE, "\n")
-        cat("Squared Correlation Coefficient:", x$scorrcoef, "\n")
-        cat("Mean Squared Errors:\n", x$MSE, "\n\n")
-    }
-    if ("accuracies" %in% names(x)) {
-        cat(length (x$accuracies), "-fold cross-validation on training data:\n\n", sep="")
-        cat("Total Accuracy:", x$tot.accuracy, "\n")
-        cat("Single Accuracies:\n", x$accuracies, "\n\n")
-    }
-    cat("\n\n")
-}
-
-scale.data.frame <-
-function(x, center = TRUE, scale = TRUE)
-{
-    i <- sapply(x, is.numeric)
-    if (ncol(x[, i, drop = FALSE])) {
-        x[, i] <- tmp <- scale.default(x[, i, drop = FALSE], na.omit(center), na.omit(scale))
-        if(center || !is.logical(center))
-            attr(x, "scaled:center")[i] <- attr(tmp, "scaled:center")
-        if(scale || !is.logical(scale))
-            attr(x, "scaled:scale")[i]  <- attr(tmp, "scaled:scale")
-    }
-    x
-}
-
-plot.svm <-
-function(x, data, formula = NULL, fill = TRUE,
-         grid = 50, slice = list(), symbolPalette = palette(),
-         svSymbol = "x", dataSymbol = "o", ...)
-{
-    if (x$type < 3) {
-        if (is.null(formula) && ncol(data) == 3) {
-            formula <- formula(delete.response(terms(x)))
-            formula[2:3] <- formula[[2]][2:3]
-        }
-        if (is.null(formula))
-            stop("missing formula.")
-        if (fill) {
-            sub <- model.frame(formula, data)
-            xr <- seq(min(sub[, 2]), max(sub[, 2]), length = grid)
-            yr <- seq(min(sub[, 1]), max(sub[, 1]), length = grid)
-            l <- length(slice)
-            if (l < ncol(data) - 3) {
-                slnames <- names(slice)
-                slice <- c(slice, rep(list(0), ncol(data) - 3 -
-                                      l))
-                names <- labels(delete.response(terms(x)))
-                names(slice) <- c(slnames, names[!names %in%
-                                                 c(colnames(sub), slnames)])
-            }
-            for (i in names(which(sapply(data, is.factor))))
-                if (!is.factor(slice[[i]])) {
-                    levs <- levels(data[[i]])
-                    lev <- if (is.character(slice[[i]])) slice[[i]] else levs[1]
-                    fac <- factor(lev, levels = levs)
-                    if (is.na(fac))
-                        stop(paste("Level", dQuote(lev), "could not be found in factor", sQuote(i)))
-                    slice[[i]] <- fac
-                }
-
-            lis <- c(list(yr), list(xr), slice)
-            names(lis)[1:2] <- colnames(sub)
-            new <- expand.grid(lis)[, labels(terms(x))]
-            preds <- predict(x, new)
-            filled.contour(xr, yr,
-                           matrix(as.numeric(preds),
-                                  nrow = length(xr), byrow = TRUE),
-                           plot.axes = {
-                               axis(1)
-                               axis(2)
-                               colind <- as.numeric(model.response(model.frame(x, data)))
-                               dat1 <- data[-x$index,]
-                               dat2 <- data[x$index,]
-                               coltmp1 <- symbolPalette[colind[-x$index]]
-                               coltmp2 <- symbolPalette[colind[x$index]]
-                               points(formula, data = dat1, pch = dataSymbol, col = coltmp1)
-                               points(formula, data = dat2, pch = svSymbol, col = coltmp2)
-                           },
-                           levels = 1:(length(levels(preds)) + 1),
-                           key.axes = axis(4, 1:(length(levels(preds))) + 0.5,
-                           labels = levels(preds),
-                           las = 3),
-                           plot.title = title(main = "SVM classification plot",
-                           xlab = names(lis)[2], ylab = names(lis)[1]),
-                           ...)
-        }
-        else {
-            plot(formula, data = data, type = "n", ...)
-            colind <- as.numeric(model.response(model.frame(x,
-                                                            data)))
-            dat1 <- data[-x$index,]
-            dat2 <- data[x$index,]
-            coltmp1 <- symbolPalette[colind[-x$index]]
-            coltmp2 <- symbolPalette[colind[x$index]]
-            points(formula, data = dat1, pch = dataSymbol, col = coltmp1)
-            points(formula, data = dat2, pch = svSymbol, col = coltmp2)
-            invisible()
-        }
-    }
-}
-
-write.svm <-
-function (object, svm.file="Rdata.svm", scale.file = "Rdata.scale",
-          yscale.file = "Rdata.yscale")
-{
-
-    ret <- .C ("svmwrite",
-               ## model
-               as.double  (if (object$sparse) object$SV@ra else t(object$SV)),
-               as.integer (nrow(object$SV)), as.integer(ncol(object$SV)),
-               as.integer (if (object$sparse) object$SV@ia else 0),
-               as.integer (if (object$sparse) object$SV@ja else 0),
-               as.double  (as.vector(object$coefs)),
-               as.double  (object$rho),
-               as.double  (object$probA),
-               as.double  (object$probB),
-               as.integer (object$nclasses),
-               as.integer (object$tot.nSV),
-               as.integer (object$labels),
-               as.integer (object$nSV),
-               as.integer (object$sparse),
-
-               ## parameter
-               as.integer (object$type),
-               as.integer (object$kernel),
-               as.integer (object$degree),
-               as.double  (object$gamma),
-               as.double  (object$coef0),
-
-               ## filename
-               as.character(svm.file),
-
-               PACKAGE = "e1071"
-               )$ret
-
-    write.table(data.frame(center = object$x.scale$"scaled:center",
-                           scale  = object$x.scale$"scaled:scale"),
-                file=scale.file, col.names=FALSE, row.names=FALSE)
-
-    if (!is.null(object$y.scale))
-        write.table(data.frame(center = object$y.scale$"scaled:center",
-                               scale  = object$y.scale$"scaled:scale"),
-                    file=yscale.file, col.names=FALSE, row.names=FALSE)
-}
-
-read.svmproblem <-
-  function(filename){
-    stopifnot(is.character(filename),
-              file.exists(filename))
-    prob <- .Call("svm_read_problem",
-                  filename
-                                        #PACKAGE="libsvmR"
-                  )
-    ## Should have a list of 4 things
-    ## length, targetvalues, feature pointers, node space
-    names(prob) <- c("nRows","nCols","y","x","x.space")
-    class(prob) <- "svmproblem"
-    prob
-  }
-
-
-
 set.svmdebug <- function(d){
   .C("svm_set_debug",as.integer(d))
 }
 
-svm.default <-
-function (p,
+svmdebug.off <- function(){
+  invisible(.C("svm_set_debug",0L))
+}
+svmdebug.on <- function(){
+  invisible(.C("svm_set_debug",1L))
+}
+
+svm <- function (p,
+          y           = NULL,
           type        = NULL,
           kernel      = "radial",
           degree      = 3L,
@@ -294,7 +106,10 @@ function (p,
           ...)
 {
   stopifnot(class(p) == "svmproblem")
-  y <- p$y
+  if(is.null(y)){
+    stopifnot(p$y == NULL)
+    y <- p$y
+  }
 
   ## NULL parameters?
   if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
@@ -311,19 +126,21 @@ function (p,
     else if (is.factor(y)) "C-classification"
     else "eps-regression"
 
-  type <- pmatch(type, c("C-classification",
-                         "nu-classification",
-                         "one-classification",
-                         "eps-regression",
-                         "nu-regression"), 99) - 1
+  type <- pmatch(type, c(typenames,99))-1
+  ## ("C-classification",
+  ##                        "nu-classification",
+  ##                        "one-classification",
+  ##                        "eps-regression",
+  ##                        "nu-regression"), 99) - 1
 
   if (type > 10) stop("wrong type specification!")
 
   kernel.name <- kernel
-  kernel <- pmatch(kernel, c("linear",
-                             "polynomial",
-                             "radial",
-                             "sigmoid"), 99) - 1
+  kernel <- pmatch(kernel, c(kernelnames,99))-1
+  ## c("linear",
+  ##                            "polynomial",
+  ##                            "radial",
+  ##                            "sigmoid"), 99) - 1
 
   if (kernel > 10) stop("wrong kernel specification!")
   type <- as.integer(type)
@@ -398,7 +215,7 @@ function (p,
             y            = as.numeric(y),
             type         = as.integer(type),
             kernel       = kernel,
-            degree       = degree,
+            degree       = as.integer(degree),
             gamma        = gamma,
             coef0        = coef0,
             cost         = cost,
@@ -412,17 +229,17 @@ function (p,
             shrinking    = shrinking,
             probability  = probability,
             seed         = seed,
-            ret          = ret)
-  ## PACKAGE = "e1071")
-
+            ret          = ret,
+            PACKAGE = "libsvmR")
   ret <- append(ret,
                 list(
                      call        = match.call(),
                      type        = type,
+                     type.name   = typenames[type+1],
                      kernel.name = kernel.name,
                      kernel      = kernel,
                      cost        = cost,
-                     degree      = degree,
+                     degree      = as.integer(degree),
                      gamma       = gamma,
                      coef0       = coef0,
                      nu          = nu,
@@ -430,13 +247,127 @@ function (p,
                      levels      = lev,
                      nCols       = p$nCols))
 
-  class (ret) <- "svmmodel"
-  ## if (fitted) {
-  ##       ret$fitted <- na.action(predict(ret, xhold,
-  ##                                       decision.values = TRUE))
-  ##       ret$decision.values <- attr(ret$fitted, "decision.values")
-  ##       attr(ret$fitted, "decision.values") <- NULL
-  ##       if (type > 1) ret$residuals <- y - ret$fitted
-  ##   }
+  class(ret) <- "svmmodel"
+  ret
+}
+
+crossvalidate <- function(learn,        #Function to do learning
+                          data,         #Features
+                          targets,      #target values/classes
+                          metric,
+
+                          folds = 10,   #Number of folds or indices
+                          dopredict = predict,      #Function to do prediction
+                          seed = 1L,
+                          ...){
+  
+  set.seed(as.integer(seed))
+  folds <- as.integer(folds)
+  nfold <- max(unique(folds))
+  foldids <-
+    if(length(folds) == 1){               #nway-folds, construct ids
+      ord <- sample(1:length(targets))    #Random ordering
+      rep(1:folds,length.out=length(targets))[ord]
+    }
+    else {
+      folds
+    }
+  
+  cv <- sapply(1:nfold,function(i){
+    cat("Fold ",i,"\n")
+    train <- which(foldids!=i)
+    test <-  which(foldids==i)
+    model <- learn(data[train,], targets[train], ...)
+    pred <- dopredict(model,data[test,])
+    res <- metric(pred, targets[test])
+    cat("\n")
+    res
+  })
+
+  t(as.matrix(cv))
+}
+               
+auc <- function(perf){
+  x <- perf@x.values[[1]]
+  y <- perf@y.values[[1]]
+  auc <- 0.0
+  for(j in 2:length(x)){
+    i <- j-1
+    w <- x[j] - x[i]
+    if(w > 0 && !is.nan(y[i])){
+      h <- y[j] - y[i]
+      auc <- auc + y[i]*w + (0.5 * h * w)
+    }
+  }
+  auc
+}
+
+
+rocpr.aucs <- function(p,t){
+  library(ROCR)
+
+  pred <- prediction(p$values,t)
+  roc <- performance(pred,"tpr","fpr")
+  pr  <- performance(pred,"prec","rec")
+  c(roc=auc(roc),pr=auc(pr))
+}
+               
+
+             
+read.svmproblem <- function(filename){
+  stopifnot(is.character(filename),
+            file.exists(filename))
+  filename <- path.expand(filename)
+  prob <- .Call("svm_read_problem",
+                filename,
+                PACKAGE="libsvmR"
+                )
+  ## Should have a list of 4 things
+  ## length, targetvalues, feature pointers, node space
+  names(prob) <- c("nRows","nCols","y","x","x.space")
+  class(prob) <- "svmproblem"
+  prob
+}
+
+save.svmmodel <- function(filename,model){
+  stopifnot(class(model) == "svmmodel",  
+            is.character(filename))
+  filename <- path.expand(filename)
+  invisible(.Call("svm_save_model",
+                  filename,
+                  model,
+                  PACKAGE = "libsvmR"))
+}
+
+load.svmmodel <- function(filename){
+  stopifnot(is.character(filename),
+            file.exists(filename))
+  ret <- list( ## Allocate results ahead of time and modify in C call
+              type     = integer (1),
+              kernel   = integer (1),
+              nclasses = integer (1),
+              degree = integer (1),
+              gamma = numeric (1),
+              coef0 = numeric (1),
+              tot.nSV  = integer (1),  # for all classes
+              SV       = NULL,          # External pointer for SVs
+              labels   = NULL,
+              nSV      = NULL,
+              rho      = NULL,
+              coefs    = NULL,
+              probA    = NULL,
+              probB    = NULL,
+              x.space  = NULL)
+  .Call("svm_load_model_R",
+        filename,
+        ret,
+        PACKAGE = "libsvmR")
+  
+  ret <- append(ret,
+                list(call = match.call(),
+                     type.name   = typenames[ret$type+1],
+                     kernel.name = kernelnames[ret$kernel+1]
+                     ))
+  class(ret) <- "svmmodel"
   ret
 }
