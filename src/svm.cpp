@@ -2798,10 +2798,12 @@ const char *svm_check_parameter(const svm_problem *prob, const svm_parameter *pa
 
 int svm_check_probability_model(const svm_model *model)
 {
-	return ((model->param.svm_type == C_SVC || model->param.svm_type == NU_SVC) &&
-		model->probA!=NULL && model->probB!=NULL) ||
-		((model->param.svm_type == EPSILON_SVR || model->param.svm_type == NU_SVR) &&
-		 model->probA!=NULL);
+	return
+	  ((model->param.svm_type == C_SVC || model->param.svm_type == NU_SVC)
+	   && model->probA!=NULL && model->probB!=NULL)
+	  ||
+	  ((model->param.svm_type == EPSILON_SVR || model->param.svm_type == NU_SVR)
+	   && model->probA!=NULL);
 }
 
 // void svm_set_print_string_function(void (*print_func)(const char *))
@@ -3073,7 +3075,8 @@ SEXP svmtrain(SEXP pairArgs){
   SEXP ret = getListElement(args,"ret",1); 
 
   // Save the support vectors as an external pointer
-  int model_idx = getListElementIndex(ret,"SV");
+  int SV_idx = getListElementIndex(ret,"SV");
+  int SVidx_idx = getListElementIndex(ret,"SVidx");
 
   /* check parameters & copy error message */
   s = svm_check_parameter(&prob, &par);
@@ -3099,18 +3102,22 @@ SEXP svmtrain(SEXP pairArgs){
 
   // Copy over pointers to support vectors. Make sure to save the
   // x_space of the problem in an R object as the model has pointers
-  // into it now
-  SEXP SV;
-  PROTECT(SV = allocVector(VECSXP,totSV));
+  // into it now.  Calculate indices of support vectors in original
+  // problem. 
+  SEXP SV, SVidx;
+  PROTECT(SV = allocVector(VECSXP,totSV));  
+  PROTECT(SVidx = allocVector(INTSXP,totSV));
+  int *index = INTEGER(SVidx);
   for(i=0; i < totSV; i++){
     SET_VECTOR_ELT(SV,i,R_MakeExternalPtr(model->SV[i], R_NilValue, R_NilValue));
+    for(int j=0; j < prob.l; j++){
+      if (model->SV[i] == prob.x[j]) {
+	index[i] = j+1;		// Respect R's 1-starting index
+      }
+    }
   }
-  SET_VECTOR_ELT(ret, model_idx, SV);
-
-  // Alternate version that uses internal pointers
-  // struct svm_node **SV = Malloc(struct svm_node *, totSV);
-  // memcpy(SV, model->SV, totSV*sizeof(struct svm_node *)); 
-  // SET_VECTOR_ELT(ret, model_idx, R_MakeExternalPtr(SV, R_NilValue, R_NilValue));
+  SET_VECTOR_ELT(ret, SV_idx, SV);
+  SET_VECTOR_ELT(ret, SVidx_idx, SVidx);
 
   if (probability && par.svm_type != ONE_CLASS) {
     if (par.svm_type == EPSILON_SVR || par.svm_type == NU_SVR)
@@ -3142,7 +3149,7 @@ SEXP svmtrain(SEXP pairArgs){
   // Don't free the problem data as it is handled by R
 
   Free(prob.x);			// Free pointers to SVs
-  UNPROTECT(2);
+  UNPROTECT(3);
   return R_NilValue;
 }
 
@@ -3216,8 +3223,6 @@ SEXP svmpredict(SEXP pairArgs){
       cls[i] = svm_predict_probability(&m, train[i], prob + i * nclasses);
   } else {
     info(2,"svmmpredict values\n");
-
-
     for (i = 0; i < xr; i++){
       cls[i] = svm_predict_values(&m, train[i], vals + i * nclasses * (nclasses - 1) / 2);
       // pred[i] = svm_predict(&m, train[i]);

@@ -24,7 +24,7 @@ predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
     .External("svmpredict",
               train = newdata$x,
               nRows = newdata$nRows,
-              probability = probability,
+              probability = as.integer(probability),
               model = model,
               ret = ret,
               PACKAGE = "libsvmR")
@@ -66,7 +66,7 @@ function (x, ...)
         cat("         nu: ", x$nu, "\n")
     if (x$type==3) {
         cat("    epsilon: ", x$epsilon, "\n\n")
-        if (x$compprob)
+        if (x$probability)
             cat("Sigma: ", x$sigma, "\n\n")
     }
 
@@ -83,7 +83,7 @@ svm.debuglvl <- function(d){
 svm <- function (p,
           y           = NULL,
           type        = NULL,
-          kernel      = "radial",
+          kernel      = "linear",
           degree      = 3L,
           gamma       = 1 / p$nCols,
           coef0       = 0,
@@ -97,6 +97,7 @@ svm <- function (p,
           probability = FALSE,
           fitted      = TRUE,
           seed        = 1L,
+          max.classes = 2,              # This or fewer classes automatically becomes classification
           ...)
 {
   stopifnot(class(p) == "svmproblem")
@@ -118,6 +119,7 @@ svm <- function (p,
   if (is.null(type)) type <-
     if (is.null(y)) "one-classification"
     else if (is.factor(y)) "C-classification"
+    else if (length(unique(y)) <= max.classes) "C-classification"
     else "eps-regression"
 
   type <- pmatch(type, c(typenames,99))-1
@@ -194,6 +196,7 @@ svm <- function (p,
               nclasses = integer  (1),
               tot.nSV  = integer  (1),  # for all classes
               SV       = NULL,          # External pointer for SVs
+              SVidx    = NULL,          # Indices to support vectors
               labels   = integer  (nclass),
               nSV      = integer  (nclass),
               rho      = double   (nclass * (nclass - 1) / 2),
@@ -239,6 +242,7 @@ svm <- function (p,
                      nu          = nu,
                      epsilon     = epsilon,
                      levels      = lev,
+                     probability  = probability,
                      nCols       = p$nCols))
 
   class(ret) <- "svmmodel"
@@ -247,7 +251,7 @@ svm <- function (p,
             
 
              
-read.svmproblem <- function(filename){
+read.svmproblem <- function(filename, max.classes=2){
   stopifnot(is.character(filename),
             file.exists(filename))
   filename <- path.expand(filename)
@@ -258,6 +262,10 @@ read.svmproblem <- function(filename){
   ## Should have a list of 4 things
   ## length, targetvalues, feature pointers, node space
   names(prob) <- c("nRows","nCols","y","x","x.space")
+  if (length(unique(prob$y)) <= max.classes) {    #2-class problem
+    prob$y <- as.factor(prob$y)
+  }
+
   class(prob) <- "svmproblem"
   prob
 }
