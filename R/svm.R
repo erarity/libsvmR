@@ -75,16 +75,10 @@ function (x, ...)
 
 }
 
-set.svmdebug <- function(d){
-  .C("svm_set_debug",as.integer(d))
+svm.debuglvl <- function(d){
+  invisible(.C("svm_set_debug",as.integer(d)))
 }
 
-svmdebug.off <- function(){
-  invisible(.C("svm_set_debug",0L))
-}
-svmdebug.on <- function(){
-  invisible(.C("svm_set_debug",1L))
-}
 
 svm <- function (p,
           y           = NULL,
@@ -107,7 +101,7 @@ svm <- function (p,
 {
   stopifnot(class(p) == "svmproblem")
   if(is.null(y)){
-    stopifnot(p$y == NULL)
+    stopifnot(!is.null(p$y))
     y <- p$y
   }
 
@@ -250,68 +244,7 @@ svm <- function (p,
   class(ret) <- "svmmodel"
   ret
 }
-
-crossvalidate <- function(learn,        #Function to do learning
-                          data,         #Features
-                          targets,      #target values/classes
-                          metric,
-
-                          folds = 10,   #Number of folds or indices
-                          dopredict = predict,      #Function to do prediction
-                          seed = 1L,
-                          ...){
-  
-  set.seed(as.integer(seed))
-  folds <- as.integer(folds)
-  nfold <- max(unique(folds))
-  foldids <-
-    if(length(folds) == 1){               #nway-folds, construct ids
-      ord <- sample(1:length(targets))    #Random ordering
-      rep(1:folds,length.out=length(targets))[ord]
-    }
-    else {
-      folds
-    }
-  
-  cv <- sapply(1:nfold,function(i){
-    cat("Fold ",i,"\n")
-    train <- which(foldids!=i)
-    test <-  which(foldids==i)
-    model <- learn(data[train,], targets[train], ...)
-    pred <- dopredict(model,data[test,])
-    res <- metric(pred, targets[test])
-    cat("\n")
-    res
-  })
-
-  t(as.matrix(cv))
-}
-               
-auc <- function(perf){
-  x <- perf@x.values[[1]]
-  y <- perf@y.values[[1]]
-  auc <- 0.0
-  for(j in 2:length(x)){
-    i <- j-1
-    w <- x[j] - x[i]
-    if(w > 0 && !is.nan(y[i])){
-      h <- y[j] - y[i]
-      auc <- auc + y[i]*w + (0.5 * h * w)
-    }
-  }
-  auc
-}
-
-
-rocpr.aucs <- function(p,t){
-  library(ROCR)
-
-  pred <- prediction(p$values,t)
-  roc <- performance(pred,"tpr","fpr")
-  pr  <- performance(pred,"prec","rec")
-  c(roc=auc(roc),pr=auc(pr))
-}
-               
+            
 
              
 read.svmproblem <- function(filename){
@@ -370,4 +303,98 @@ load.svmmodel <- function(filename){
                      ))
   class(ret) <- "svmmodel"
   ret
+}
+
+crossvalidate <- function(learn,        #Function to do learning
+                          data,         #Features
+                          targets,      #target values/classes
+                          metric,
+
+                          folds = 10,   #Number of folds or indices
+                          dopredict = predict,      #Function to do prediction
+                          seed = 1L,
+                          cv.iter = lapply,
+                          ...){
+  
+  set.seed(as.integer(seed))
+  folds <- as.integer(folds)
+  nfold <- max(unique(folds))
+  foldids <-
+    if(length(folds) == 1){               #nway-folds, construct ids
+      ord <- sample(1:length(targets))    #Random ordering
+      rep(1:folds,length.out=length(targets))[ord]
+    }
+    else {
+      folds
+    }
+  
+  cv <- cv.iter(1:nfold,function(i){
+    cat("Fold ",i,"\n")
+    train <- which(foldids!=i)
+    test <-  which(foldids==i)
+    model <- learn(data[train,], targets[train], ...)
+    pred <- dopredict(model,data[test,])
+    res <- metric(pred, targets[test])
+    cat("\n")
+    res
+  })
+
+  t(simplify2array(as.matrix(cv)))
+}
+               
+
+## Make a set of parameters for an SVM
+make.svmparams <- function(...){
+  p <- list(...)
+  expand.grid(p,stringsAsFactors=FALSE)
+}  
+                           
+
+
+
+tune.svm <- function(x, params, metric, tune.iter = lapply, ...){
+  tuned <-
+    tune.iter(1:nrow(params), function(p){
+      par <- lapply(params[p,],unlist)
+      c("--------------------------\n")
+      
+      cv <- do.call(crossvalidate,
+                    c(list(learn=svm, data=x, targets=x$y, metric=metric),
+                      par,
+                      list(...)))
+      means <- apply(cv,2,mean)
+      names(means) <- paste("mean.",names(means),sep="")
+      sds <- apply(cv,2,sd)
+      names(sds) <- paste("sd.",names(sds),sep="")
+      res <- c(par,means,sds)
+      invisible(print(format(c("Results: ",res))))
+      res
+    }
+  )
+  data.frame(t(simplify2array(tuned)))
+}
+
+
+auc <- function(perf){
+  x <- perf@x.values[[1]]
+  y <- perf@y.values[[1]]
+  auc <- 0.0
+  for(j in 2:length(x)){
+    i <- j-1
+    w <- x[j] - x[i]
+    if(w > 0 && !is.nan(y[i])){
+      h <- y[j] - y[i]
+      auc <- auc + y[i]*w + (0.5 * h * w)
+    }
+  }
+  auc
+}
+
+
+rocpr.aucs <- function(p,t){
+  library(ROCR)
+  pred <- prediction(p$values,t)
+  roc <- performance(pred,"tpr","fpr")
+  pr  <- performance(pred,"prec","rec")
+  c(roc=auc(roc),pr=auc(pr))
 }

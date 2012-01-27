@@ -12,6 +12,12 @@
 #include <Rinternals.h>
 #include <Rdefines.h>
 
+static int DEBUG_SVMLIB = 0;
+// Switch debugging on/off
+extern "C" 
+void svm_set_debug(int *d){
+  DEBUG_SVMLIB = *d;
+}
 
 int libsvm_version = LIBSVM_VERSION;
 typedef float Qfloat;
@@ -43,28 +49,7 @@ static inline double powi(double base, int times)
 #define TAU 1e-12
 // #define Malloc(type,n) (type *)malloc((n)*sizeof(type))
 #define Malloc(type,n) Calloc(n,type)
-#define info Rprintf
-
-// static void print_string_stdout(const char *s)
-// {
-// 	fputs(s,stdout);
-// 	fflush(stdout);
-// }
-// static void (*svm_print_string) (const char *) = &print_string_stdout;
-// #if 1
-// static void info(const char *fmt,...)
-// {
-// 	char buf[BUFSIZ];
-// 	va_list ap;
-// 	va_start(ap,fmt);
-// 	vsprintf(buf,fmt,ap);
-// 	va_end(ap);
-// 	(*svm_print_string)(buf);
-// }
-// #else
-// static void info(const char *fmt,...) {}
-// #endif
-
+#define info(lvl,...) if(DEBUG_SVMLIB >= lvl){ Rprintf(__VA_ARGS__); }
 
 //
 // Kernel Cache
@@ -484,7 +469,7 @@ void Solver::reconstruct_gradient()
 			nr_free++;
 
 	if(2*nr_free < active_size)
-		info("\nWARNING: using -h 0 may be faster\n");
+	  info(1,"\nWARNING: using -h 0 may be faster\n");
 
 	if (nr_free*l > 2*active_size*(l-active_size))
 	{
@@ -577,7 +562,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 		{
 			counter = min(l,1000);
 			if(shrinking) do_shrinking();
-			info(".");
+			info(3,".");
 		}
 
 		int i,j;
@@ -587,7 +572,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 			reconstruct_gradient();
 			// reset active set size and check
 			active_size = l;
-			info("*");
+			info(3,"*");
 			if(select_working_set(i,j)!=0)
 				break;
 			else
@@ -743,9 +728,9 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 			// reconstruct the whole gradient to calculate objective value
 			reconstruct_gradient();
 			active_size = l;
-			info("*");
+			info(3,"*");
 		}
-		info("\nWARNING: reaching max number of iterations");
+		info(1,"\nWARNING: reaching max number of iterations");
 	}
 
 	// calculate rho
@@ -779,7 +764,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 	si->upper_bound_p = Cp;
 	si->upper_bound_n = Cn;
 
-	info("\noptimization finished, #iter = %d\n",iter);
+	info(1,"\noptimization finished, #iter = %d\n",iter);
 
 	delete[] p;
 	delete[] y;
@@ -952,7 +937,7 @@ void Solver::do_shrinking()
 		unshrink = true;
 		reconstruct_gradient();
 		active_size = l;
-		info("*");
+		info(3,"*");
 	}
 
 	for(i=0;i<active_size;i++)
@@ -1471,7 +1456,7 @@ static void solve_c_svc(
 		sum_alpha += alpha[i];
 
 	if (Cp==Cn)
-		info("nu = %f\n", sum_alpha/(Cp*prob->l));
+	  info(1,"nu = %f\n", sum_alpha/(Cp*prob->l));
 
 	for(i=0;i<l;i++)
 		alpha[i] *= y[i];
@@ -1521,7 +1506,7 @@ static void solve_nu_svc(
 		alpha, 1.0, 1.0, param->eps, si,  param->shrinking);
 	double r = si->r;
 
-	info("C = %f\n",1/r);
+	info(1,"C = %f\n",1/r);
 
 	for(i=0;i<l;i++)
 		alpha[i] *= y[i]/r;
@@ -1598,7 +1583,7 @@ static void solve_epsilon_svr(
 		alpha[i] = alpha2[i] - alpha2[i+l];
 		sum_alpha += fabs(alpha[i]);
 	}
-	info("nu = %f\n",sum_alpha/(param->C*l));
+	info(1,"nu = %f\n",sum_alpha/(param->C*l));
 
 	delete[] alpha2;
 	delete[] linear_term;
@@ -1633,7 +1618,7 @@ static void solve_nu_svr(
 	s.Solve(2*l, SVR_Q(*prob,*param), linear_term, y,
 		alpha2, C, C, param->eps, si, param->shrinking);
 
-	info("epsilon = %f\n",-si->r);
+	info(1,"epsilon = %f\n",-si->r);
 
 	for(i=0;i<l;i++)
 		alpha[i] = alpha2[i] - alpha2[i+l];
@@ -1677,7 +1662,7 @@ static decision_function svm_train_one(
 			break;
 	}
 
-	info("obj = %f, rho = %f\n",si.obj,si.rho);
+	info(1,"obj = %f, rho = %f\n",si.obj,si.rho);
 
 	// output SVs
 
@@ -1701,7 +1686,7 @@ static decision_function svm_train_one(
 		}
 	}
 
-	info("nSV = %d, nBSV = %d\n",nSV,nBSV);
+	info(1,"nSV = %d, nBSV = %d\n",nSV,nBSV);
 
 	decision_function f;
 	f.alpha = alpha;
@@ -1813,13 +1798,13 @@ static void sigmoid_train(
 
 		if (stepsize < min_step)
 		{
-			info("Line search fails in two-class probability estimates\n");
+		  info(1,"Line search fails in two-class probability estimates\n");
 			break;
 		}
 	}
 
 	if (iter>=max_iter)
-		info("Reaching maximal iterations in two-class probability estimates\n");
+	  info(1,"Reaching maximal iterations in two-class probability estimates\n");
 	Free(t);
 }
 
@@ -1891,7 +1876,7 @@ static void multiclass_probability(int k, double **r, double *p)
 		}
 	}
 	if (iter>=max_iter)
-		info("Exceeds max_iter in multiclass_prob\n");
+	  info(1,"Exceeds max_iter in multiclass_prob\n");
 	for(t=0;t<k;t++) Free(Q[t]);
 	Free(Q);
 	Free(Qp);
@@ -2011,70 +1996,88 @@ static double svm_svr_probability(
 		else 
 			mae+=fabs(ymv[i]);
 	mae /= (prob->l-count);
-	info("Prob. model for test data: target value = predicted value + z,\nz: Laplace distribution e^(-|z|/sigma)/(2sigma),sigma= %g\n",mae);
+	info(1,"Prob. model for test data: target value = predicted value + z,\nz: Laplace distribution e^(-|z|/sigma)/(2sigma),sigma= %g\n",mae);
 	Free(ymv);
 	return mae;
 }
 
+struct idxval {
+  int idx;
+  double val;
+};
 
-// label: label name, start: begin of each class, count: #data of classes, perm: indices to the original data
-// perm, length l, must be allocated before calling this subroutine
-static void svm_group_classes(const svm_problem *prob, int *nr_class_ret, int **label_ret, int **start_ret, int **count_ret, int *perm)
-{
-	int l = prob->l;
-	int max_nr_class = 16;
-	int nr_class = 0;
-	int *label = Malloc(int,max_nr_class);
-	int *count = Malloc(int,max_nr_class);
-	int *data_label = Malloc(int,l);	
-	int i;
+// Compare two idxvals
+static int cmpidxval(const void *x, const void *y){
+  struct idxval iv1 = *((struct idxval *) x);
+  struct idxval iv2 = *((struct idxval *) y);
 
-	for(i=0;i<l;i++)
-	{
-		int this_label = (int)prob->y[i];
-		int j;
-		for(j=0;j<nr_class;j++)
-		{
-			if(this_label == label[j])
-			{
-				++count[j];
-				break;
-			}
-		}
-		data_label[i] = j;
-		if(j == nr_class)
-		{
-			if(nr_class == max_nr_class)
-			{
-				max_nr_class *= 2;
-				label = (int *)realloc(label,max_nr_class*sizeof(int));
-				count = (int *)realloc(count,max_nr_class*sizeof(int));
-			}
-			label[nr_class] = this_label;
-			count[nr_class] = 1;
-			++nr_class;
-		}
-	}
-
-	int *start = Malloc(int,nr_class);
-	start[0] = 0;
-	for(i=1;i<nr_class;i++)
-		start[i] = start[i-1]+count[i-1];
-	for(i=0;i<l;i++)
-	{
-		perm[start[data_label[i]]] = i;
-		++start[data_label[i]];
-	}
-	start[0] = 0;
-	for(i=1;i<nr_class;i++)
-		start[i] = start[i-1]+count[i-1];
-
-	*nr_class_ret = nr_class;
-	*label_ret = label;
-	*start_ret = start;
-	*count_ret = count;
-	Free(data_label);
+  if(iv1.val < iv2.val)     { return -1; }
+  else if(iv1.val > iv2.val){ return +1; }
+  else if(iv1.idx < iv2.idx){ return -1; }
+  else if(iv1.idx > iv2.idx){ return +1; }
+  else if(iv1.idx < iv2.idx){ return -1; }
+  else                      { return  0; }
 }
+
+
+// Group the classes in prob.  Mainly return a permutation mapping
+// classes to adjacent entries to facilitate multiclass training.
+// This function respects the order of the class labels according to
+// sorting: class -1 will always appear before 1.  This means the
+// training will always have the "negative" low-numbered class as the
+// first set and the "positive" high-numbered class as the second
+// group.  Return info on number of classes, count of each, starting
+// index in the permutation.
+static void svm_group_classes(const svm_problem *prob, 
+			      int *nr_class_ret, 
+			      int **label_ret, 
+			      int **start_ret, 
+			      int **count_ret, 
+			      int *perm)
+{
+  int l = prob->l;
+  int i;
+  struct idxval *iv = (struct idxval *) Malloc(struct idxval, l);
+
+  // Set up and sort labels, track original indices
+  for(i=0; i < l; i++){
+    iv[i].idx = i;
+    iv[i].val = prob->y[i];
+  }
+  qsort((void *) iv, l, sizeof(struct idxval), cmpidxval);
+
+  // Count classes
+  int nr_class = 0;
+  for(i=0; i < l; i++){
+    if(i == 0 || ((int) iv[i].val) != ((int) iv[i-1].val)){
+      nr_class++;
+    }
+  }
+  
+  // Fill in count, start index, labels, and permutation
+  int *count = Malloc(int,nr_class);
+  int *start = Malloc(int,nr_class);
+  int *label = Malloc(int,nr_class);
+  int curclass = -1;
+  for(i=0; i < l; i++){
+    if(i == 0 || ((int) iv[i].val) != ((int) iv[i-1].val)){
+      curclass++;
+      start[curclass] = i;
+      label[curclass] = (int) iv[i].val;
+    }
+    else{
+      count[curclass]++;
+    }
+    perm[i] = iv[i].idx;
+  }
+
+  *nr_class_ret = nr_class;
+  *label_ret = label;
+  *start_ret = start;
+  *count_ret = count;
+  Free(iv);
+}
+
 
 //
 // Interface functions
@@ -2139,7 +2142,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 		// group training data of the same class
 		svm_group_classes(prob,&nr_class,&label,&start,&count,perm);
 		if(nr_class == 1) 
-			info("WARNING: training data in only one class. See README for details.\n");
+		  info(0,"WARNING: training data in only one class. See README for details.\n");
 		
 		svm_node **x = Malloc(svm_node *,l);
 		int i;
@@ -2191,12 +2194,12 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 				for(k=0;k<ci;k++)
 				{
 					sub_prob.x[k] = x[si+k];
-					sub_prob.y[k] = +1;
+					sub_prob.y[k] = -1;
 				}
 				for(k=0;k<cj;k++)
 				{
 					sub_prob.x[ci+k] = x[sj+k];
-					sub_prob.y[ci+k] = -1;
+					sub_prob.y[ci+k] = +1;
 				}
 
 				if(param->probability)
@@ -2258,7 +2261,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 			nz_count[i] = nSV;
 		}
 		
-		info("Total nSV = %d\n",total_sv);
+		info(1,"Total nSV = %d\n",total_sv);
 
 		model->l = total_sv;
 		model->SV = Malloc(svm_node *,total_sv);
@@ -2859,23 +2862,13 @@ static void printListElements(SEXP list){
   }
 }
 
-static int DEBUG_SVMLIB = 1;
-
 static void svm_free_nodes(SEXP s){
   if(TYPEOF(s) != EXTPTRSXP){
     error("argument not external pointer");
   }
   struct svm_node *nodes = (struct svm_node *) R_ExternalPtrAddr(s);
   Free(nodes);
-  if(DEBUG_SVMLIB){
-    Rprintf("Freeing SVM problem\n");
-  }
-}
-
-// Switch debuggin on/off
-extern "C" 
-void svm_set_debug(int *d){
-  DEBUG_SVMLIB = *d;
+  info(1,"Freeing SVM problem\n");
 }
 
 // Read a problem from a libsvm format text file
@@ -2902,7 +2895,7 @@ SEXP svm_read_problem(SEXP fname)
 
   line = Calloc(max_line_len,char);
 
-  if(DEBUG_SVMLIB){ Rprintf("Starting processing of %s\n",filename); }
+  info(2,"Starting processing of %s\n",filename);
   while(1)
     {
       if(read_line(fp)==NULL){
@@ -2924,7 +2917,7 @@ SEXP svm_read_problem(SEXP fname)
     }
   rewind(fp);
 
-  if(DEBUG_SVMLIB){ Rprintf("Finished first pass of %s\n",filename);}
+  info(2,"Finished first pass of %s\n",filename);
 
   SEXP y;			/* Easier than coercing raw double* to SEXP */
   PROTECT(y = allocVector(REALSXP,prob.l));
@@ -2984,7 +2977,7 @@ SEXP svm_read_problem(SEXP fname)
   }
 
   if(failure){
-    if(DEBUG_SVMLIB){ Rprintf("Error at input line %d\n",failure);}
+    info(2,"Error at input line %d\n",failure);
     Free(x_space);
     Free(line);
     UNPROTECT(1);
@@ -2992,7 +2985,7 @@ SEXP svm_read_problem(SEXP fname)
   }
 
   fclose(fp);
-  if(DEBUG_SVMLIB){ Rprintf("Finished processing of %s\n",filename);}
+  info(2,"Finished processing of %s\n",filename);
 
   // Track all nodes
   SEXP xspace;
@@ -3091,7 +3084,7 @@ SEXP svmtrain(SEXP pairArgs){
   srand(seed);
 
   if(DEBUG_SVMLIB){
-    Rprintf("Beginning training\n");
+    info(2,"Beginning training\n");
   }
 
   /* call svm_train */
@@ -3158,8 +3151,8 @@ SEXP svmpredict(SEXP pairArgs){
   SEXP args;
   PROTECT(args = PairToVectorList(pairArgs)); // For ease of argument lookup
 
-  if(DEBUG_SVMLIB){
-    Rprintf("Args to svmmpredict\n");
+  if(DEBUG_SVMLIB >= 2){
+    info(2,"Args to svmmpredict\n");
     printListElements(args);
   }
 
@@ -3211,25 +3204,19 @@ SEXP svmpredict(SEXP pairArgs){
   double *vals	= REAL(getListElement(ret,"values",1));
   double *prob	= REAL(getListElement(ret,"prob",1));
 
-  if(DEBUG_SVMLIB){
-    Rprintf("Beginning prediction\n");
-  }
+  info(2,"Beginning prediction\n");
 
   /* call svm-predict-function for each x-row, possibly using probability 
      estimator, if requested */
   if (probability && svm_check_probability_model(&m)) {
-    if(DEBUG_SVMLIB){
-      Rprintf("svmmpredict probability\n");
-    }
-
+    info(2,"svmmpredict probability\n");
     m.probA    = REAL(getListElement(model,"probA",1));
     m.probB    = REAL(getListElement(model,"probB",1));
     for (i = 0; i < xr; i++)
       cls[i] = svm_predict_probability(&m, train[i], prob + i * nclasses);
   } else {
-    if(DEBUG_SVMLIB){
-      Rprintf("svmmpredict values\n");
-    }
+    info(2,"svmmpredict values\n");
+
 
     for (i = 0; i < xr; i++){
       cls[i] = svm_predict_values(&m, train[i], vals + i * nclasses * (nclasses - 1) / 2);
@@ -3335,9 +3322,7 @@ SEXP svm_save_model(SEXP fname, SEXP smodel)
 
   struct svm_model *model = &m;
 
-  if(DEBUG_SVMLIB){
-    Rprintf("svm_save_model parsed arguments\n");
-  }
+  info(2,"svm_save_model parsed arguments\n");
 
   const svm_parameter& param = model->param;
 
@@ -3396,9 +3381,7 @@ SEXP svm_save_model(SEXP fname, SEXP smodel)
       fprintf(fp, "\n");
     }
 
-  if(DEBUG_SVMLIB){
-    Rprintf("svm_save_model output params\n");
-  }
+  info(2,"svm_save_model output params\n");
 
   fprintf(fp, "SV\n");
   const double * const *sv_coef = model->sv_coef;
