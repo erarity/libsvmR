@@ -10,7 +10,8 @@ kernelnames <- c("linear",
                  "radial",
                  "sigmoid")
 
-predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
+predict.svmmodel <- function (model, newdata,
+                              probability=FALSE, multicore=FALSE, ...){
     stopifnot(class(model) == "svmmodel",
               !missing(newdata),
               class(newdata) == "svmproblem",
@@ -177,7 +178,7 @@ svm <- function (p,
         if (type < 3) {
             if(any(as.integer(y) != y))
               stop("dependent variable has to be of factor or integer type for classification mode.")
-            y <- as.factor(y)
+            y <- as.ordered(y)
             lev <- levels(y)
             y <- as.integer(y)
         } else lev <- unique(y)
@@ -263,7 +264,7 @@ read.svmproblem <- function(filename, max.classes=2){
   ## length, targetvalues, feature pointers, node space
   names(prob) <- c("nRows","nCols","y","x","x.space")
   if (length(unique(prob$y)) <= max.classes) {    #2-class problem
-    prob$y <- as.factor(prob$y)
+    prob$y <- as.ordered(prob$y)
   }
 
   class(prob) <- "svmproblem"
@@ -342,7 +343,7 @@ crossvalidate <- function(learn,        #Function to do learning
     test <-  which(foldids==i)
     model <- learn(data[train,], targets[train], ...)
     pred <- dopredict(model,data[test,])
-    res <- metric(pred, targets[test])
+    res <- metric(pred, targets[test], test)
     cat("\n")
     res
   })
@@ -380,29 +381,4 @@ tune.svm <- function(x, params, metric, tune.iter = lapply, ...){
     }
   )
   data.frame(t(simplify2array(tuned)))
-}
-
-
-auc <- function(perf){
-  x <- perf@x.values[[1]]
-  y <- perf@y.values[[1]]
-  auc <- 0.0
-  for(j in 2:length(x)){
-    i <- j-1
-    w <- x[j] - x[i]
-    if(w > 0 && !is.nan(y[i])){
-      h <- y[j] - y[i]
-      auc <- auc + y[i]*w + (0.5 * h * w)
-    }
-  }
-  auc
-}
-
-
-rocpr.aucs <- function(p,t){
-  library(ROCR)
-  pred <- prediction(p$values,t)
-  roc <- performance(pred,"tpr","fpr")
-  pr  <- performance(pred,"prec","rec")
-  c(roc=auc(roc),pr=auc(pr))
 }
