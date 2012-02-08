@@ -41,6 +41,7 @@ print.svmproblem <-  function(x,...) {
                  
 "[.svmproblem" <- function(x, i, j, ..., drop){
     x$x <- x$x[i]
+    stopifnot(!sapply(x$x,is.null))
     if(!is.null(x$y)){
         x$y <- x$y[i]
     }

@@ -2629,34 +2629,36 @@ char* read_line(FILE *input)
 
 void svm_free_model_content(svm_model* model_ptr)
 {
-	if(model_ptr->free_sv && model_ptr->l > 0 && model_ptr->SV != NULL)
-		Free((model_ptr->SV[0]));
-	if(model_ptr->sv_coef)
-	{
-		for(int i=0;i<model_ptr->nr_class-1;i++)
-			Free(model_ptr->sv_coef[i]);
-	}
+  if(model_ptr->free_sv && model_ptr->l > 0 && model_ptr->SV != NULL){
+    info(2,"Freeing x_space of a model with %d SVs\n",model_ptr->l);
+    Free((model_ptr->SV[0]));
+  }
+  if(model_ptr->sv_coef)
+    {
+      for(int i=0;i<model_ptr->nr_class-1;i++)
+	Free(model_ptr->sv_coef[i]);
+    }
 
-	Free(model_ptr->SV);
-	model_ptr->SV = NULL;
+  Free(model_ptr->SV);
+  model_ptr->SV = NULL;
 
-	Free(model_ptr->sv_coef);
-	model_ptr->sv_coef = NULL;
+  Free(model_ptr->sv_coef);
+  model_ptr->sv_coef = NULL;
 
-	Free(model_ptr->rho);
-	model_ptr->rho = NULL;
+  Free(model_ptr->rho);
+  model_ptr->rho = NULL;
 
-	Free(model_ptr->label);
-	model_ptr->label= NULL;
+  Free(model_ptr->label);
+  model_ptr->label= NULL;
 
-	Free(model_ptr->probA);
-	model_ptr->probA = NULL;
+  Free(model_ptr->probA);
+  model_ptr->probA = NULL;
 
-	Free(model_ptr->probB);
-	model_ptr->probB= NULL;
+  Free(model_ptr->probB);
+  model_ptr->probB= NULL;
 
-	Free(model_ptr->nSV);
-	model_ptr->nSV = NULL;
+  Free(model_ptr->nSV);
+  model_ptr->nSV = NULL;
 }
 
 void svm_free_and_destroy_model(svm_model** model_ptr_ptr)
