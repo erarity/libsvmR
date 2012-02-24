@@ -3717,3 +3717,52 @@ SEXP svm_load_model_R(SEXP filename, SEXP ret){
   UNPROTECT(nprotected);
   return R_NilValue;
 }
+
+// Returns a dense vector of values which are the SVM node.  This is
+// pretty dangerous as no real checking is done to ensure that the
+// correct type is passed in for the node
+extern "C"
+SEXP svm_node_as_vec(SEXP nodeS, SEXP vecS){
+  R_len_t ncols = length(vecS);
+  double *vec = REAL(vecS);
+  struct svm_node *node = (struct svm_node *) R_ExternalPtrAddr(nodeS);
+  while(node->index != -1){
+    if(node->index <= ncols){
+      vec[node->index - 1] = node->value;
+      node++; 			// Pointer arithmetic on node
+    }
+    else{
+      error("svm_node_as_vec: svm_node index %d larger than allocated vector length %d",
+	    node->index, ncols);
+    }
+  }
+  return R_NilValue;
+}
+    
+  
+
+// // Compute the weight vector for a linear svm, should only be called
+// // for a linear svm, R code should ensure this.
+// extern "C"
+// SEXP svm_get_weight_vector(SEXP totSVsS, SEXP coefsS, SEXP SVS){
+//   int i;
+
+//   int totSVs = INTEGER(totSVsS)[0];
+//   if(DEBUG_SVMLIB >= 2){
+//     info(2,"Getting weight vector from %d support vectors\n",totSVs);
+//     printListElements(args);
+//   }
+//   double *coefs = REAL(coefsS); 
+  
+//   struct svm_node ** SV = (struct svm_node **) Malloc(struct svm_node *,totSV);
+//   for(i=0; i < totSV; i++){
+//     SV[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(SV,i));
+//   }
+
+//   // Need to do sparse vector addition on SV
+
+//   Free(SV);
+//   return R_NilValue;
+// }
+
+

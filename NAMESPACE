@@ -5,7 +5,7 @@ export(svm, save.svmmodel, load.svmmodel, read.svmproblem,
        crossvalidate, rocpr.aucs, auc,
        tune.svm, make.svmparams, 
        auc, rocpr.aucs, ranks, zscores, decoy.metric,
-       svm.debuglvl)
+       svm.debuglvl, node2vec)
 
 S3method(predict, svmmodel)
 S3method(print, svmmodel)

@@ -82,6 +82,17 @@ svm.debuglvl <- function(d){
 }
 
 
+## Compute the hyperplane, only works for a linear model
+compute.hyperplane <- function(mod){
+  Reduce(
+         function(cur,i){
+           cur + mod$coefs[[i]] * node2vec(mod$SV[[i]],mod$nCols)
+         },
+         1:mod$tot.nSV,
+         numeric(mod$nCols))
+}
+
+## Train an svm
 svm <- function (p,
           y           = NULL,
           type        = NULL,
@@ -245,7 +256,12 @@ svm <- function (p,
                      epsilon     = epsilon,
                      levels      = lev,
                      probability  = probability,
+                     hyperplane  = NULL,
                      nCols       = p$nCols))
+
+  if(kernel.name=="linear"){
+    ret$hyperplane <- compute.hyperplane(ret)
+  }
 
   class(ret) <- "svmmodel"
   ret
@@ -344,7 +360,7 @@ crossvalidate <- function(learn,        #Function to do learning
     test <-  which(foldids==i)
     model <- learn(data[train,], targets[train], ...)
     pred <- dopredict(model,data[test,])
-    res <- metric(pred, targets[test], test)
+    res <- metric(pred, targets[test], testids=test,...)
     cat("\n")
     res
   })
@@ -382,4 +398,15 @@ tune.svm <- function(x, params, metric, tune.iter = lapply, ...){
     }
   )
   data.frame(t(simplify2array(tuned)))
+}
+
+## Convert a node to a dense vector.  Dangerous as they types can't be
+## checked
+node2vec <- function(node,ncols){
+  stopifnot(mode(node) == "externalptr")
+  vec <- numeric(ncols)
+  .Call("svm_node_as_vec",
+        node,
+        vec)
+  vec
 }

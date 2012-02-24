@@ -16,7 +16,25 @@ auc <- function(perf){
   auc
 }
 
-## Compute aucs for both ROC and PR
+
+
+## Compute ROC
+roc.auc <- function(p,t,...){
+  library(ROCR)
+  pred <- prediction(p$values,t)
+  roc <- performance(pred,"tpr","fpr")
+  c(roc=auc(roc))
+}
+
+## Compute PR
+pr.auc <- function(p,t,...){
+  library(ROCR)
+  pred <- prediction(p$values,t)
+  pr  <- performance(pred,"prec","rec")
+  c(pr=auc(pr))
+}
+
+## Compute Both ROC and PR
 rocpr.aucs <- function(p,t,...){
   library(ROCR)
   pred <- prediction(p$values,t)
@@ -56,13 +74,35 @@ zscores <- function(preds, class, pids){
 
 ## Produces a function that can be used in cross validation to
 ## evaluate various statistics assocaited with decoys
-decoy.metric <- function(pids){
-   function(preds, class, test,...){
-    rp <- rocpr.aucs(preds,class)
-    rnks <- ranks(preds$values,class,pids[test])
-    c(rp,
-      rank=mean(rnks),
-      tops=sum(rnks==1)/length(rnks),
-      zscore=mean(zscores(preds$values,class,pids[test])))
-  }
+## decoy.metric <- function(pids){
+##    function(preds, class, test,...){
+##     rp <- rocpr.aucs(preds,class)
+##     rnks <- ranks(preds$values,class,pids[test])
+##     c(rp,
+##       rank=mean(rnks),
+##       tops=sum(rnks==1)/length(rnks),
+##       zscore=mean(zscores(preds$values,class,pids[test])))
+##   }
+## }
+
+## Produces a function that can be used in cross validation to
+## evaluate various statistics assocaited with decoys
+decoy.metric <- function(preds, class, testids=1:length(preds), pids, ...){
+  library(ROCR)
+  pvals <-switch(mode(preds),
+                list = preds$values,
+                numeric = preds)
+  pred <- prediction(pvals,class)
+  roc <- performance(pred,"tpr","fpr")
+  pr  <- performance(pred,"prec","rec")
+  rnks <- ranks(pvals,class,pids[testids])
+  zs <- zscores(pvals,class,pids[testids])
+
+  c(roc=auc(roc),
+    pr=auc(pr),
+    rank=mean(rnks),
+    tops=sum(rnks==1)/length(rnks),
+    zscore=mean(zs),
+    nprot=length(unique(pids[testids])),
+    n=length(pids[testids]))
 }
