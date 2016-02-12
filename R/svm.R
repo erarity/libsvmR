@@ -93,7 +93,7 @@ compute.hyperplane <- function(mod){
 }
 
 ## Train an svm
-svm <- function (p,
+svm <- function (p,skips,
           y           = NULL,
           type        = NULL,
           kernel      = "linear",
@@ -118,6 +118,9 @@ svm <- function (p,
     stopifnot(!is.null(p$y))
     y <- p$y
   }
+
+  ## Is the list captured properly?
+  skips
 
   ## NULL parameters?
   if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")

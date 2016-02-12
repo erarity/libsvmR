@@ -2,7 +2,7 @@ useDynLib(libsvmR)
 
 export(svm, save.svmmodel, load.svmmodel, read.svmproblem,
        "[.svmproblem",
-       crossvalidate, rocpr.aucs, auc,
+       crossvalidate, rocpr.aucs, auc, roc.auc, pr.auc,
        tune.svm, make.svmparams, 
        auc, rocpr.aucs, ranks, zscores, decoy.metric,
        svm.debuglvl, node2vec)

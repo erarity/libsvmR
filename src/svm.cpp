@@ -220,7 +220,13 @@ private:
 	const double gamma;
 	const double coef0;
 
+	//MODTAG
+	const int *skips = NULL;
+	const int numSkips = 0;
+
+	//static double dot(const svm_node *px, const svm_node *py);
 	static double dot(const svm_node *px, const svm_node *py);
+	
 	double kernel_linear(int i, int j) const
 	{
 		return dot(x[i],x[j]);
@@ -284,8 +290,34 @@ Kernel::~Kernel()
 	delete[] x_square;
 }
 
-double Kernel::dot(const svm_node *px, const svm_node *py)
+//double Kernel::dot(const svm_node *px, const svm_node *py)
+//{
+//	double sum = 0;
+//	while(px->index != -1 && py->index != -1)
+//	{
+//		if(px->index == py->index)
+//		{
+//			sum += px->value * py->value;
+//			++px;
+//			++py;
+//		}
+//		else
+//		{
+//			if(px->index > py->index)
+//				++py;
+//			else
+//				++px;
+//		}			
+//	}
+//	return sum;
+//}
+
+//Modified to accept a skip list.
+double Kernel::dot(const svm_node *px, const svm_node *py )
 {
+	
+	int sk = numSkips;
+
 	double sum = 0;
 	while(px->index != -1 && py->index != -1)
 	{
@@ -301,7 +333,7 @@ double Kernel::dot(const svm_node *px, const svm_node *py)
 				++py;
 			else
 				++px;
-		}			
+		}		
 	}
 	return sum;
 }
