@@ -10,7 +10,8 @@ kernelnames <- c("linear",
                  "radial",
                  "sigmoid")
 
-predict.svmmodel <- function (model, newdata, probability=FALSE, ...){
+predict.svmmodel <- function (model, newdata,
+                              probability=FALSE, multicore=FALSE, ...){
     stopifnot(class(model) == "svmmodel",
               !missing(newdata),
               class(newdata) == "svmproblem",
@@ -40,6 +41,7 @@ print.svmproblem <-  function(x,...) {
                  
 "[.svmproblem" <- function(x, i, j, ..., drop){
     x$x <- x$x[i]
+    stopifnot(!sapply(x$x,is.null))
     if(!is.null(x$y)){
         x$y <- x$y[i]
     }
@@ -80,7 +82,18 @@ svm.debuglvl <- function(d){
 }
 
 
-svm <- function (p,
+## Compute the hyperplane, only works for a linear model
+compute.hyperplane <- function(mod){
+  Reduce(
+         function(cur,i){
+           cur + mod$coefs[[i]] * node2vec(mod$SV[[i]],mod$nCols)
+         },
+         1:mod$tot.nSV,
+         numeric(mod$nCols))
+}
+
+## Train an svm
+svm <- function (p,skips,
           y           = NULL,
           type        = NULL,
           kernel      = "linear",
@@ -105,6 +118,9 @@ svm <- function (p,
     stopifnot(!is.null(p$y))
     y <- p$y
   }
+
+  ## Is the list captured properly?
+  skips
 
   ## NULL parameters?
   if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
@@ -177,7 +193,7 @@ svm <- function (p,
         if (type < 3) {
             if(any(as.integer(y) != y))
               stop("dependent variable has to be of factor or integer type for classification mode.")
-            y <- as.factor(y)
+            y <- as.ordered(y)
             lev <- levels(y)
             y <- as.integer(y)
         } else lev <- unique(y)
@@ -243,7 +259,12 @@ svm <- function (p,
                      epsilon     = epsilon,
                      levels      = lev,
                      probability  = probability,
+                     hyperplane  = NULL,
                      nCols       = p$nCols))
+
+  if(kernel.name=="linear"){
+    ret$hyperplane <- compute.hyperplane(ret)
+  }
 
   class(ret) <- "svmmodel"
   ret
@@ -263,7 +284,7 @@ read.svmproblem <- function(filename, max.classes=2){
   ## length, targetvalues, feature pointers, node space
   names(prob) <- c("nRows","nCols","y","x","x.space")
   if (length(unique(prob$y)) <= max.classes) {    #2-class problem
-    prob$y <- as.factor(prob$y)
+    prob$y <- as.ordered(prob$y)
   }
 
   class(prob) <- "svmproblem"
@@ -342,7 +363,7 @@ crossvalidate <- function(learn,        #Function to do learning
     test <-  which(foldids==i)
     model <- learn(data[train,], targets[train], ...)
     pred <- dopredict(model,data[test,])
-    res <- metric(pred, targets[test])
+    res <- metric(pred, targets[test], testids=test,...)
     cat("\n")
     res
   })
@@ -382,27 +403,13 @@ tune.svm <- function(x, params, metric, tune.iter = lapply, ...){
   data.frame(t(simplify2array(tuned)))
 }
 
-
-auc <- function(perf){
-  x <- perf@x.values[[1]]
-  y <- perf@y.values[[1]]
-  auc <- 0.0
-  for(j in 2:length(x)){
-    i <- j-1
-    w <- x[j] - x[i]
-    if(w > 0 && !is.nan(y[i])){
-      h <- y[j] - y[i]
-      auc <- auc + y[i]*w + (0.5 * h * w)
-    }
-  }
-  auc
-}
-
-
-rocpr.aucs <- function(p,t){
-  library(ROCR)
-  pred <- prediction(p$values,t)
-  roc <- performance(pred,"tpr","fpr")
-  pr  <- performance(pred,"prec","rec")
-  c(roc=auc(roc),pr=auc(pr))
+## Convert a node to a dense vector.  Dangerous as they types can't be
+## checked
+node2vec <- function(node,ncols){
+  stopifnot(mode(node) == "externalptr")
+  vec <- numeric(ncols)
+  .Call("svm_node_as_vec",
+        node,
+        vec)
+  vec
 }

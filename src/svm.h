@@ -17,9 +17,9 @@ struct svm_node
 
 struct svm_problem
 {
-	int l;
-	double *y;
-	struct svm_node **x;
+	int l;                  // Number of rows or number of training examples
+	double *y;              // The classes
+	struct svm_node **x;    // The features
 };
 
 enum { C_SVC, NU_SVC, ONE_CLASS, EPSILON_SVR, NU_SVR };	/* svm_type */

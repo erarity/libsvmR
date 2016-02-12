@@ -1,0 +1,176 @@
+
+svm.cpp,6974
+static int DEBUG_SVMLIB 15,235
+void svm_set_debug(18,303
+int libsvm_version 22,355
+typedef float Qfloat;23,392
+typedef signed char schar;24,414
+template <class T> static inline T min(26,453
+template <class T> static inline T max(29,542
+template <class T> static inline void swap(31,619
+template <class S, class T> static inline void clone(32,695
+static inline double powi(37,839
+#define INF 48,1015
+#define TAU 49,1036
+#define Malloc(51,1113
+#define info(52,1151
+class Cache60,1328
+	int l;Cache::l72,1618
+	long int size;Cache::size73,1626
+	struct head_tCache::head_t74,1642
+		head_t *prev,Cache::head_t::prev76,1660
+		head_t *prev, *next;Cache::head_t::next76,1660
+		Qfloat *data;Cache::head_t::data77,1702
+		int len;Cache::head_t::len78,1718
+	head_t *head;Cache::head81,1774
+	head_t lru_head;Cache::lru_head82,1789
+Cache::Cache(87,1869
+Cache::~Cache(96,2190
+void Cache::lru_delete(103,2300
+void Cache::lru_insert(110,2424
+int Cache::get_data(119,2579
+void Cache::swap_index(149,3091
+class QMatrix 187,3904
+	virtual ~QMatrix(QMatrix::~QMatrix192,4070
+class Kernel:Kernel195,4097
+	virtual void swap_index(Kernel::swap_index204,4413
+	const svm_node **x;Kernel::x214,4625
+	double *x_square;Kernel::x_square215,4646
+	const int kernel_type;Kernel::kernel_type218,4684
+	const int degree;Kernel::degree219,4708
+	const double gamma;Kernel::gamma220,4727
+	const double coef0;Kernel::coef0221,4748
+	double kernel_linear(Kernel::kernel_linear224,4830
+	double kernel_poly(Kernel::kernel_poly228,4903
+	double kernel_rbf(Kernel::kernel_rbf232,4999
+	double kernel_sigmoid(Kernel::kernel_sigmoid236,5109
+	double kernel_precomputed(Kernel::kernel_precomputed240,5201
+Kernel::Kernel(246,5301
+Kernel::~Kernel(281,6007
+double Kernel::dot(287,6063
+double Kernel::k_function(309,6369
+class Solver 386,7845
+	Solver(Solver::Solver388,7868
+	virtual ~Solver(Solver::~Solver389,7882
+	struct SolutionInfo Solver::SolutionInfo391,7906
+		double obj;Solver::SolutionInfo::obj392,7929
+		double rho;Solver::SolutionInfo::rho393,7943
+		double upper_bound_p;Solver::SolutionInfo::upper_bound_p394,7957
+		double upper_bound_n;Solver::SolutionInfo::upper_bound_n395,7981
+		double r;Solver::SolutionInfo::r396,8005
+	int active_size;Solver::active_size403,8216
+	schar *y;Solver::y404,8234
+	double *G;Solver::G405,8245
+	enum { LOWER_BOUND,Solver::LOWER_BOUND406,8292
+	enum { LOWER_BOUND, UPPER_BOUND,Solver::UPPER_BOUND406,8292
+	enum { LOWER_BOUND, UPPER_BOUND, FREE Solver::FREE406,8292
+	char *alpha_status;Solver::alpha_status407,8334
+	double *alpha;Solver::alpha408,8389
+	const QMatrix *Q;Solver::Q409,8405
+	const double *QD;Solver::QD410,8424
+	double eps;Solver::eps411,8443
+	double Cp,Solver::Cp412,8456
+	double Cp,Cn;Solver::Cn412,8456
+	double *p;Solver::p413,8471
+	int *active_set;Solver::active_set414,8483
+	double *G_bar;Solver::G_bar415,8501
+	int l;Solver::l416,8563
+	bool unshrink;Solver::unshrink417,8571
+	double get_C(Solver::get_C419,8595
+	void update_alpha_status(Solver::update_alpha_status423,8652
+	bool is_upper_bound(Solver::is_upper_bound431,8842
+	bool is_lower_bound(Solver::is_lower_bound432,8913
+	bool is_free(Solver::is_free433,8984
+void Solver::swap_index(443,9281
+void Solver::reconstruct_gradient(455,9527
+void Solver::Solve(497,10316
+int Solver::select_working_set(779,15239
+bool Solver::be_shrunk(878,17122
+void Solver::do_shrinking(898,17418
+double Solver::calculate_rho(959,18415
+class Solver_NU 1002,19019
+	Solver_NU(Solver_NU::Solver_NU1005,19061
+	void Solve(Solver_NU::Solve1006,19077
+	SolutionInfo *si;Solver_NU::si1014,19326
+int Solver_NU::select_working_set(1022,19568
+bool Solver_NU::be_shrunk(1134,21720
+void Solver_NU::do_shrinking(1154,22048
+double Solver_NU::calculate_rho(1206,23169
+class SVC_Q:SVC_Q1259,23987
+	SVC_Q(SVC_Q::SVC_Q1262,24025
+	Qfloat *get_Q(SVC_Q::get_Q1272,24327
+	double *get_QD(SVC_Q::get_QD1284,24568
+	void swap_index(SVC_Q::swap_index1289,24612
+	~SVC_Q(SVC_Q::~SVC_Q1297,24749
+	schar *y;SVC_Q::y1304,24819
+	Cache *cache;SVC_Q::cache1305,24830
+	double *QD;SVC_Q::QD1306,24845
+class ONE_CLASS_Q:ONE_CLASS_Q1309,24862
+	ONE_CLASS_Q(ONE_CLASS_Q::ONE_CLASS_Q1312,24905
+	Qfloat *get_Q(ONE_CLASS_Q::get_Q1321,25174
+	double *get_QD(ONE_CLASS_Q::get_QD1333,25403
+	void swap_index(ONE_CLASS_Q::swap_index1338,25447
+	~ONE_CLASS_Q(ONE_CLASS_Q::~ONE_CLASS_Q1345,25565
+	Cache *cache;ONE_CLASS_Q::cache1351,25627
+	double *QD;ONE_CLASS_Q::QD1352,25642
+class SVR_Q:SVR_Q1355,25659
+	SVR_Q(SVR_Q::SVR_Q1358,25697
+	void swap_index(SVR_Q::swap_index1380,26189
+	Qfloat *get_Q(SVR_Q::get_Q1387,26307
+	double *get_QD(SVR_Q::get_QD1406,26734
+	~SVR_Q(SVR_Q::~SVR_Q1411,26778
+	int l;SVR_Q::l1421,26913
+	Cache *cache;SVR_Q::cache1422,26921
+	schar *sign;SVR_Q::sign1423,26936
+	int *index;SVR_Q::index1424,26950
+	mutable int next_buffer;SVR_Q::next_buffer1425,26963
+	Qfloat *buffer[SVR_Q::buffer1426,26989
+	double *QD;SVR_Q::QD1427,27009
+static void solve_c_svc(1433,27076
+static void solve_nu_svc(1468,27741
+static void solve_one_class(1523,28629
+static void solve_epsilon_svr(1555,29245
+static void solve_nu_svr(1593,30026
+struct decision_function1634,30812
+	double *alpha;decision_function::alpha1636,30839
+	double rho;decision_function::rho1637,30855
+static decision_function svm_train_one(1640,30873
+static void sigmoid_train(1698,31953
+static double sigmoid_predict(1811,34408
+static void multiclass_probability(1822,34726
+static void svm_binary_svc_probability(1886,35993
+static double svm_svr_probability(1973,38127
+struct idxval 2004,38858
+  int idx;idxval::idx2005,38874
+  double val;idxval::val2006,38885
+static int cmpidxval(2010,38926
+static void svm_group_classes(2031,39835
+svm_model *svm_train(svm_train2085,41034
+void svm_cross_validation(2325,46611
+int svm_get_svm_type(2441,49422
+int svm_get_nr_class(2446,49503
+void svm_get_labels(2451,49578
+double svm_get_svr_probability(2458,49734
+double svm_predict_values(2471,50103
+double svm_predict(2547,51756
+double svm_predict_probability(2562,52201
+static const char *svm_type_table[svm_type_table2601,53360
+static const char *kernel_type_table[kernel_type_table2606,53462
+static char *line line2611,53566
+static int max_line_len 2612,53592
+char* read_line(2614,53625
+void svm_free_model_content(2630,53963
+void svm_free_and_destroy_model(2662,54572
+void svm_destroy_param(2672,54786
+const char *svm_check_parameter(svm_check_parameter2678,54886
+int svm_check_probability_model(2799,57351
+static SEXP getListElement(2821,57934
+static int getListElementIndex(2841,58403
+static void printListElements(2859,58800
+static void svm_free_nodes(2867,59005
+SEXP svm_read_problem(2878,59302
+SEXP svmtrain(3028,62675
+SEXP svmpredict(3157,67074
+SEXP svm_save_model(3291,71181
+svm_model *svm_load_model(svm_load_model3421,74804
+SEXP svm_load_model_R(3622,79121

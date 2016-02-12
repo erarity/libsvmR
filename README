@@ -1,0 +1,60 @@
+Make sure some R packages have been installed so that a local package
+directory is already available. A good one to install is another SVM
+interface available in the e1071 package.
+
+Do (start R, in command prompt)
+> install.packages("e1071")
+
+There should now be a $HOME/R directory (in your home directory) with
+subdirectories for packages you install through R.
+
+
+Build command from a terminal (NOT the R command shell, Terminal.app
+or unix command line).
+
+> unzip libsvmR.zip
+> R CMD INSTALL -l /home2/kauffman/R/x86_64-pc-linux-gnu-library/3.0 --build libsvmR
+
+The -l option specifies where to install the local version of the
+library which is usually in the home directory where local packages
+are installed. You'll need to poke around a little to find exact path
+which may not exist unless you've fired up R and installed another
+package through the package management system.  to get this package to
+install.
+
+It should then be possible to start R and use the current version of
+the libsvmR library. The following is a demonstration session in the R
+command shell.
+
+> library(libsvmR)
+> data <- read.svmproblem("~/code/libsvmR/heart_scale")
+> data
+
+SVM Problem Data
+nRows: 270 
+nCols: 13 
+y:  Present 
+
+> model <- svm(data)
+> model
+
+Call:
+svm(p = data)
+
+
+Parameters:
+   SVM-Type:  C-classification 
+ SVM-Kernel:  linear 
+       cost:  1 
+      gamma:  0.07692308 
+
+Number of Support Vectors:  100
+
+> predictions <- predict(model,data)
+> errors <- sum(predictions$class != data$y)
+> errors
+[1] 172
+> correct <- sum(predictions$class == data$y)
+> accuracy <- correct / (correct + errors)
+> accuracy
+[1] 0.362963

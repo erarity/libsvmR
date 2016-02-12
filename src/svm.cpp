@@ -220,7 +220,13 @@ private:
 	const double gamma;
 	const double coef0;
 
+	//MODTAG
+	const int *skips = NULL;
+	const int numSkips = 0;
+
+	//static double dot(const svm_node *px, const svm_node *py);
 	static double dot(const svm_node *px, const svm_node *py);
+	
 	double kernel_linear(int i, int j) const
 	{
 		return dot(x[i],x[j]);
@@ -284,8 +290,34 @@ Kernel::~Kernel()
 	delete[] x_square;
 }
 
-double Kernel::dot(const svm_node *px, const svm_node *py)
+//double Kernel::dot(const svm_node *px, const svm_node *py)
+//{
+//	double sum = 0;
+//	while(px->index != -1 && py->index != -1)
+//	{
+//		if(px->index == py->index)
+//		{
+//			sum += px->value * py->value;
+//			++px;
+//			++py;
+//		}
+//		else
+//		{
+//			if(px->index > py->index)
+//				++py;
+//			else
+//				++px;
+//		}			
+//	}
+//	return sum;
+//}
+
+//Modified to accept a skip list.
+double Kernel::dot(const svm_node *px, const svm_node *py )
 {
+	
+	int sk = numSkips;
+
 	double sum = 0;
 	while(px->index != -1 && py->index != -1)
 	{
@@ -301,7 +333,7 @@ double Kernel::dot(const svm_node *px, const svm_node *py)
 				++py;
 			else
 				++px;
-		}			
+		}		
 	}
 	return sum;
 }
@@ -2629,34 +2661,36 @@ char* read_line(FILE *input)
 
 void svm_free_model_content(svm_model* model_ptr)
 {
-	if(model_ptr->free_sv && model_ptr->l > 0 && model_ptr->SV != NULL)
-		Free((model_ptr->SV[0]));
-	if(model_ptr->sv_coef)
-	{
-		for(int i=0;i<model_ptr->nr_class-1;i++)
-			Free(model_ptr->sv_coef[i]);
-	}
+  if(model_ptr->free_sv && model_ptr->l > 0 && model_ptr->SV != NULL){
+    info(2,"Freeing x_space of a model with %d SVs\n",model_ptr->l);
+    Free((model_ptr->SV[0]));
+  }
+  if(model_ptr->sv_coef)
+    {
+      for(int i=0;i<model_ptr->nr_class-1;i++)
+	Free(model_ptr->sv_coef[i]);
+    }
 
-	Free(model_ptr->SV);
-	model_ptr->SV = NULL;
+  Free(model_ptr->SV);
+  model_ptr->SV = NULL;
 
-	Free(model_ptr->sv_coef);
-	model_ptr->sv_coef = NULL;
+  Free(model_ptr->sv_coef);
+  model_ptr->sv_coef = NULL;
 
-	Free(model_ptr->rho);
-	model_ptr->rho = NULL;
+  Free(model_ptr->rho);
+  model_ptr->rho = NULL;
 
-	Free(model_ptr->label);
-	model_ptr->label= NULL;
+  Free(model_ptr->label);
+  model_ptr->label= NULL;
 
-	Free(model_ptr->probA);
-	model_ptr->probA = NULL;
+  Free(model_ptr->probA);
+  model_ptr->probA = NULL;
 
-	Free(model_ptr->probB);
-	model_ptr->probB= NULL;
+  Free(model_ptr->probB);
+  model_ptr->probB= NULL;
 
-	Free(model_ptr->nSV);
-	model_ptr->nSV = NULL;
+  Free(model_ptr->nSV);
+  model_ptr->nSV = NULL;
 }
 
 void svm_free_and_destroy_model(svm_model** model_ptr_ptr)
@@ -3715,3 +3749,52 @@ SEXP svm_load_model_R(SEXP filename, SEXP ret){
   UNPROTECT(nprotected);
   return R_NilValue;
 }
+
+// Returns a dense vector of values which are the SVM node.  This is
+// pretty dangerous as no real checking is done to ensure that the
+// correct type is passed in for the node
+extern "C"
+SEXP svm_node_as_vec(SEXP nodeS, SEXP vecS){
+  R_len_t ncols = length(vecS);
+  double *vec = REAL(vecS);
+  struct svm_node *node = (struct svm_node *) R_ExternalPtrAddr(nodeS);
+  while(node->index != -1){
+    if(node->index <= ncols){
+      vec[node->index - 1] = node->value;
+      node++; 			// Pointer arithmetic on node
+    }
+    else{
+      error("svm_node_as_vec: svm_node index %d larger than allocated vector length %d",
+	    node->index, ncols);
+    }
+  }
+  return R_NilValue;
+}
+    
+  
+
+// // Compute the weight vector for a linear svm, should only be called
+// // for a linear svm, R code should ensure this.
+// extern "C"
+// SEXP svm_get_weight_vector(SEXP totSVsS, SEXP coefsS, SEXP SVS){
+//   int i;
+
+//   int totSVs = INTEGER(totSVsS)[0];
+//   if(DEBUG_SVMLIB >= 2){
+//     info(2,"Getting weight vector from %d support vectors\n",totSVs);
+//     printListElements(args);
+//   }
+//   double *coefs = REAL(coefsS); 
+  
+//   struct svm_node ** SV = (struct svm_node **) Malloc(struct svm_node *,totSV);
+//   for(i=0; i < totSV; i++){
+//     SV[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(SV,i));
+//   }
+
+//   // Need to do sparse vector addition on SV
+
+//   Free(SV);
+//   return R_NilValue;
+// }
+
+
