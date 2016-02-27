@@ -20,6 +20,9 @@ struct svm_problem
 	int l;                  // Number of rows or number of training examples
 	double *y;              // The classes
 	struct svm_node **x;    // The features
+	//MODTAG
+	const int *skips;	// The columns to be skipped
+	int numskips;		// Number of elements in the skip vector
 };
 
 enum { C_SVC, NU_SVC, ONE_CLASS, EPSILON_SVR, NU_SVR };	/* svm_type */

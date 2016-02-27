@@ -221,8 +221,8 @@ private:
 	const double coef0;
 
 	//MODTAG
-	const int *skips = NULL;
-	const int numSkips = 0;
+	//const int *skips = NULL;
+	//const int numSkips = 0;
 
 	//static double dot(const svm_node *px, const svm_node *py);
 	static double dot(const svm_node *px, const svm_node *py);
@@ -316,7 +316,8 @@ Kernel::~Kernel()
 double Kernel::dot(const svm_node *px, const svm_node *py )
 {
 	
-	int sk = numSkips;
+	//MODTAG
+	//int sk = numSkips;
 
 	double sum = 0;
 	while(px->index != -1 && py->index != -1)
@@ -1673,6 +1674,8 @@ static decision_function svm_train_one(
 	const svm_problem *prob, const svm_parameter *param,
 	double Cp, double Cn)
 {
+	//MODTAG
+	Rprintf("Number of elements in skip array: %d\n",prob->numskips);
 	double *alpha = Malloc(double,prob->l);
 	Solver::SolutionInfo si;
 	switch(param->svm_type)
@@ -2116,6 +2119,7 @@ static void svm_group_classes(const svm_problem *prob,
 //
 svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 {
+	Rprintf("Length of skip vector: %d\n",prob->numskips);
 	svm_model *model = Malloc(svm_model,1);
 	model->param = *param;
 	model->free_sv = 0;	// SVs will be pointers into data, don't free them
@@ -2222,6 +2226,8 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 				sub_prob.l = ci+cj;
 				sub_prob.x = Malloc(svm_node *,sub_prob.l);
 				sub_prob.y = Malloc(double,sub_prob.l);
+				sub_prob.skips = prob->skips;
+				sub_prob.numskips = prob->numskips;
 				int k;
 				for(k=0;k<ci;k++)
 				{
@@ -3057,7 +3063,7 @@ SEXP svm_read_problem(SEXP fname)
   return result;
 }
 
-// Train a model
+//Train a model
 extern "C"
 SEXP svmtrain(SEXP pairArgs){
   SEXP args;
@@ -3068,6 +3074,14 @@ SEXP svmtrain(SEXP pairArgs){
   struct svm_model    *model = NULL;
   int i, ii;
   const char* s;
+
+  //MODTAG
+  //int* skips;
+
+  //skiplist is extracted from the SEXP using a macro.
+  //skips 	  = INTEGER(getListElement(args,"skips",1));
+  //Rprintf("Captured skip list as: %s\n",skips);
+
 
   par.svm_type    = INTEGER(getListElement(args,"type",1))[0];
   par.kernel_type = INTEGER(getListElement(args,"kernel",1))[0];
@@ -3102,6 +3116,18 @@ SEXP svmtrain(SEXP pairArgs){
     prob.x[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(x,i));
   }
 
+  //MODTAG
+  prob.skips    = INTEGER(getListElement(args,"skips",1));
+  prob.numskips = INTEGER(getListElement(args,"numskips",1))[0];
+
+  int numskips = INTEGER(getListElement(args,"numskips",1))[0];
+  Rprintf("Length of skip vector: %d\n",prob.numskips);
+  Rprintf("R contents:");
+  int z;
+  for(z = 0; z < prob.numskips; z++){
+  	Rprintf("%d\n",prob.skips[z]);
+  }
+
   int seed = INTEGER(getListElement(args,"seed",1))[0];
 
   // Assume return list is already set up with appropriate fields as
@@ -3125,6 +3151,7 @@ SEXP svmtrain(SEXP pairArgs){
   }
 
   /* call svm_train */
+Rprintf("Length of skip vector: %d\n",prob.numskips);
   model = svm_train(&prob, &par);
     
   int totSV = model->l;
