@@ -21,7 +21,7 @@ struct svm_problem
 	double *y;              // The classes
 	struct svm_node **x;    // The features
 	//MODTAG
-	const int *skips;	// The columns to be skipped
+	int *skips;		// The columns to be skipped
 	int numskips;		// Number of elements in the skip vector
 };
 
@@ -62,6 +62,10 @@ struct svm_model
 	double *rho;		/* constants in decision functions (rho[k*(k-1)/2]) */
 	double *probA;		/* pariwise probability information */
 	double *probB;
+
+	/* skip list embedding */
+	int *skips;
+	int numSkips;
 
 	/* for classification only */
 

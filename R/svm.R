@@ -94,7 +94,7 @@ compute.hyperplane <- function(mod){
 
 ## Train an svm
 svm <- function (p,
-	  skips	      = NULL,	#MODTAG
+	  skips	      = NULL,
           y           = NULL,
           type        = NULL,
           kernel      = "linear",
@@ -119,10 +119,6 @@ svm <- function (p,
     stopifnot(!is.null(p$y))
     y <- p$y
   }
-
-  #MODTAG
-  # Is the list captured properly?
-  #cat("Captured skip list (R) as: ",skips)
 
   ## NULL parameters?
   if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
@@ -225,8 +221,8 @@ svm <- function (p,
               x.space  = p$x.space)
 
   .External("svmtrain",
-	    skips	 = as.integer(skips), 	#MODTAG
-	    numskips	 = length(skips),	#MODTAG
+	    skips	 = as.integer(skips),
+	    numskips	 = length(skips),
             nRows        = nr,
             x            = p$x,
             y            = as.numeric(y),
