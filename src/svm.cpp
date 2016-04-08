@@ -342,21 +342,31 @@ Kernel::~Kernel()
 double Kernel::dot(const svm_node *px, const svm_node *py, int *skips, int numSkips)
 {
 
-	Rprintf("In dot function, found skipList to be: [ ");
-	for(int i = 0; i < numSkips; i++){
-		Rprintf("%d ",skips[i]);
-	}
-	Rprintf("] \nFound skips length to be: %d\n",numSkips);
+	//Rprintf("In dot function, found skipList to be: [ ");
+	//for(int i = 0; i < numSkips; i++){
+	//	Rprintf("%d ",skips[i]);
+	//}
+	//Rprintf("] \nFound skips length to be: %d\n",numSkips);
 	
 
 	double sum = 0;
+	int skip_idx = 0;
+	int use_skips = numSkips > 0;
 	while(px->index != -1 && py->index != -1)
 	{
 		if(px->index == py->index)
 		{
-			sum += px->value * py->value;
-			++px;
-			++py;
+			while(use_skips && (skip_idx < numSkips) && (skips[skip_idx ]<= px->index)){
+				skip_idx++;
+			}
+			if(use_skips && skip_idx >= numSkips){
+				use_skips = 0;
+			}
+			if(!use_skips || skips[skip_idx] != px->index){
+				sum += px->value * py->value;
+				++px;
+				++py;
+			}
 		}
 		else
 		{
