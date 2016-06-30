@@ -93,11 +93,12 @@ compute.hyperplane <- function(mod){
 }
 
 ## Train an svm
-svm <- function (p,skips,
+svm <- function (p,
+	  skips	      = NULL,
           y           = NULL,
           type        = NULL,
           kernel      = "linear",
-          degree      = 3L,
+          degree      = 3,
           gamma       = 1 / p$nCols,
           coef0       = 0,
           cost        = 1,
@@ -118,9 +119,6 @@ svm <- function (p,skips,
     stopifnot(!is.null(p$y))
     y <- p$y
   }
-
-  ## Is the list captured properly?
-  skips
 
   ## NULL parameters?
   if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
@@ -223,6 +221,8 @@ svm <- function (p,skips,
               x.space  = p$x.space)
 
   .External("svmtrain",
+	    skips	 = as.integer(skips),
+	    numskips	 = length(skips),
             nRows        = nr,
             x            = p$x,
             y            = as.numeric(y),
