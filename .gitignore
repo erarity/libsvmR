@@ -3,3 +3,7 @@
 *.so
 testing
 .Rhistory
+
+*.swp
+*.stackdump
+src/.svm.cpp.swp
