@@ -194,11 +194,16 @@ public:
 
 class Kernel: public QMatrix {
 public:
-	Kernel(int l, svm_node * const * x, const svm_parameter& param);
+	Kernel(int l, svm_node * const * x, int *skips, int numskips, const svm_parameter& param);
 	virtual ~Kernel();
 
-	static double k_function(const svm_node *x, const svm_node *y,
+	static double k_function(const svm_node *x, const svm_node *y, int *skipList, int skipNum,
 				 const svm_parameter& param);
+	//MODTAG
+	//New function added to facilitate easier adding of skip list.
+	//Possible that it should be made private?
+	//void assign_skips(int* skips, int numSkips);
+
 	virtual Qfloat *get_Q(int column, int len) const = 0;
 	virtual double *get_QD() const = 0;
 	virtual void swap_index(int i, int j) const	// no so const...
@@ -221,27 +226,27 @@ private:
 	const double coef0;
 
 	//MODTAG
-	const int *skips = NULL;
-	const int numSkips = 0;
+	int *skips;
+	int numSkips;
 
 	//static double dot(const svm_node *px, const svm_node *py);
-	static double dot(const svm_node *px, const svm_node *py);
+	static double dot(const svm_node *px, const svm_node *py, int *skips, int numSkips);
 	
 	double kernel_linear(int i, int j) const
 	{
-		return dot(x[i],x[j]);
+		return dot(x[i],x[j],skips,numSkips);
 	}
 	double kernel_poly(int i, int j) const
 	{
-		return powi(gamma*dot(x[i],x[j])+coef0,degree);
+		return powi(gamma*dot(x[i],x[j],skips,numSkips)+coef0,degree);
 	}
 	double kernel_rbf(int i, int j) const
 	{
-		return exp(-gamma*(x_square[i]+x_square[j]-2*dot(x[i],x[j])));
+		return exp(-gamma*(x_square[i]+x_square[j]-2*dot(x[i],x[j],skips,numSkips)));
 	}
 	double kernel_sigmoid(int i, int j) const
 	{
-		return tanh(gamma*dot(x[i],x[j])+coef0);
+		return tanh(gamma*dot(x[i],x[j],skips,numSkips)+coef0);
 	}
 	double kernel_precomputed(int i, int j) const
 	{
@@ -249,10 +254,19 @@ private:
 	}
 };
 
-Kernel::Kernel(int l, svm_node * const * x_, const svm_parameter& param)
+Kernel::Kernel(int l, svm_node * const * x_, int *skipList, int skipNum, const svm_parameter& param)
 :kernel_type(param.kernel_type), degree(param.degree),
  gamma(param.gamma), coef0(param.coef0)
 {
+	skips = skipList;
+	numSkips = skipNum;
+
+	Rprintf("In Kernel constructor, found skipList to be: [ ");
+	for(int i = 0; i < skipNum; i++){
+		Rprintf("%d ",skips[i]);
+	}
+	Rprintf("] \nFound skips length to be: %d\n",numSkips);
+	
 	switch(kernel_type)
 	{
 		case LINEAR:
@@ -278,7 +292,7 @@ Kernel::Kernel(int l, svm_node * const * x_, const svm_parameter& param)
 	{
 		x_square = new double[l];
 		for(int i=0;i<l;i++)
-			x_square[i] = dot(x[i],x[i]);
+			x_square[i] = dot(x[i],x[i],skips,numSkips);
 	}
 	else
 		x_square = 0;
@@ -289,6 +303,18 @@ Kernel::~Kernel()
 	delete[] x;
 	delete[] x_square;
 }
+
+//Assign the skip values to the members of Kernel for use in the dot function.
+//void Kernel::assign_skips(int* skipList, int skipLength)
+//{
+//	skips = skipList;
+//	numSkips = skipLength;
+//	Rprintf("In assign_skips, found skipList to be: \n");
+//	for(int i = 0; i < skipLength; i++){
+//		Rprintf("%d ",skipList[i]);
+//	}
+//	Rprintf("\nFound skipLength to be: %d\n",skipLength);
+//}
 
 //double Kernel::dot(const svm_node *px, const svm_node *py)
 //{
@@ -313,19 +339,34 @@ Kernel::~Kernel()
 //}
 
 //Modified to accept a skip list.
-double Kernel::dot(const svm_node *px, const svm_node *py )
+double Kernel::dot(const svm_node *px, const svm_node *py, int *skips, int numSkips)
 {
+
+	//Rprintf("In dot function, found skipList to be: [ ");
+	//for(int i = 0; i < numSkips; i++){
+	//	Rprintf("%d ",skips[i]);
+	//}
+	//Rprintf("] \nFound skips length to be: %d\n",numSkips);
 	
-	int sk = numSkips;
 
 	double sum = 0;
+	int skip_idx = 0;
+	int use_skips = numSkips > 0;
 	while(px->index != -1 && py->index != -1)
 	{
 		if(px->index == py->index)
 		{
-			sum += px->value * py->value;
-			++px;
-			++py;
+			while(use_skips && (skip_idx < numSkips) && (skips[skip_idx ]<= px->index)){
+				skip_idx++;
+			}
+			if(use_skips && skip_idx >= numSkips){
+				use_skips = 0;
+			}
+			if(!use_skips || skips[skip_idx] != px->index){
+				sum += px->value * py->value;
+				++px;
+				++py;
+			}
 		}
 		else
 		{
@@ -338,15 +379,15 @@ double Kernel::dot(const svm_node *px, const svm_node *py )
 	return sum;
 }
 
-double Kernel::k_function(const svm_node *x, const svm_node *y,
+double Kernel::k_function(const svm_node *x, const svm_node *y, int *skipList, int skipNum,
 			  const svm_parameter& param)
 {
 	switch(param.kernel_type)
 	{
 		case LINEAR:
-			return dot(x,y);
+			return dot(x,y,skipList,skipNum);
 		case POLY:
-			return powi(param.gamma*dot(x,y)+param.coef0,param.degree);
+			return powi(param.gamma*dot(x,y,skipList,skipNum)+param.coef0,param.degree);
 		case RBF:
 		{
 			double sum = 0;
@@ -389,7 +430,7 @@ double Kernel::k_function(const svm_node *x, const svm_node *y,
 			return exp(-param.gamma*sum);
 		}
 		case SIGMOID:
-			return tanh(param.gamma*dot(x,y)+param.coef0);
+			return tanh(param.gamma*dot(x,y,skipList,skipNum)+param.coef0);
 		case PRECOMPUTED:  //x: test (validation), y: SV
 			return x[(int)(y->value)].value;
 		default:
@@ -1292,8 +1333,12 @@ class SVC_Q: public Kernel
 { 
 public:
 	SVC_Q(const svm_problem& prob, const svm_parameter& param, const schar *y_)
-	:Kernel(prob.l, prob.x, param)
+	:Kernel(prob.l, prob.x, prob.skips, prob.numskips, param)
 	{
+		//MODTAG
+		//Calls a new Kernel function that assigns the skip list values.
+		//assign_skips(prob.skips, prob.numskips);
+
 		clone(y,y_,prob.l);
 		cache = new Cache(prob.l,(long int)(param.cache_size*(1<<20)));
 		QD = new double[prob.l];
@@ -1342,7 +1387,7 @@ class ONE_CLASS_Q: public Kernel
 {
 public:
 	ONE_CLASS_Q(const svm_problem& prob, const svm_parameter& param)
-	:Kernel(prob.l, prob.x, param)
+	:Kernel(prob.l, prob.x, prob.skips, prob.numskips, param)
 	{
 		cache = new Cache(prob.l,(long int)(param.cache_size*(1<<20)));
 		QD = new double[prob.l];
@@ -1388,7 +1433,7 @@ class SVR_Q: public Kernel
 { 
 public:
 	SVR_Q(const svm_problem& prob, const svm_parameter& param)
-	:Kernel(prob.l, prob.x, param)
+	:Kernel(prob.l, prob.x, prob.skips, prob.numskips, param)
 	{
 		l = prob.l;
 		cache = new Cache(l,(long int)(param.cache_size*(1<<20)));
@@ -1673,6 +1718,8 @@ static decision_function svm_train_one(
 	const svm_problem *prob, const svm_parameter *param,
 	double Cp, double Cn)
 {
+	//MODTAG
+	//Rprintf("Number of elements in skip array: %d\n",prob->numskips);
 	double *alpha = Malloc(double,prob->l);
 	Solver::SolutionInfo si;
 	switch(param->svm_type)
@@ -2120,6 +2167,10 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 	model->param = *param;
 	model->free_sv = 0;	// SVs will be pointers into data, don't free them
 
+	//Embed the skiplsit data from the problem into the model for later use in the prediction phase.
+	model->skips = prob->skips;
+	model->numSkips = prob->numskips;
+
 	if(param->svm_type == ONE_CLASS ||
 	   param->svm_type == EPSILON_SVR ||
 	   param->svm_type == NU_SVR)
@@ -2222,6 +2273,8 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param)
 				sub_prob.l = ci+cj;
 				sub_prob.x = Malloc(svm_node *,sub_prob.l);
 				sub_prob.y = Malloc(double,sub_prob.l);
+				sub_prob.skips = prob->skips;
+				sub_prob.numskips = prob->numskips;
 				int k;
 				for(k=0;k<ci;k++)
 				{
@@ -2510,7 +2563,7 @@ double svm_predict_values(const svm_model *model, const svm_node *x, double* dec
 		double *sv_coef = model->sv_coef[0];
 		double sum = 0;
 		for(i=0;i<model->l;i++)
-			sum += sv_coef[i] * Kernel::k_function(x,model->SV[i],model->param);
+			sum += sv_coef[i] * Kernel::k_function(x,model->SV[i],model->skips,model->numSkips,model->param);
 		sum -= model->rho[0];
 		*dec_values = sum;
 
@@ -2526,7 +2579,7 @@ double svm_predict_values(const svm_model *model, const svm_node *x, double* dec
 		
 		double *kvalue = Malloc(double,l);
 		for(i=0;i<l;i++)
-		  kvalue[i] = Kernel::k_function(x,model->SV[i],model->param);
+		  kvalue[i] = Kernel::k_function(x,model->SV[i],model->skips,model->numSkips,model->param);
 
 		int *start = Malloc(int,nr_class);
 		start[0] = 0;
@@ -3057,7 +3110,7 @@ SEXP svm_read_problem(SEXP fname)
   return result;
 }
 
-// Train a model
+//Train a model
 extern "C"
 SEXP svmtrain(SEXP pairArgs){
   SEXP args;
@@ -3102,6 +3155,19 @@ SEXP svmtrain(SEXP pairArgs){
     prob.x[i] = (struct svm_node *) R_ExternalPtrAddr(VECTOR_ELT(x,i));
   }
 
+  //MODTAG
+  prob.skips    = INTEGER(getListElement(args,"skips",1));
+  prob.numskips = INTEGER(getListElement(args,"numskips",1))[0];
+
+  int numskips = INTEGER(getListElement(args,"numskips",1))[0];
+  //Rprintf("Length of skip vector: %d\n",prob.numskips);
+  //Rprintf("R contents:");
+
+  //int z;
+  //for(z = 0; z < prob.numskips; z++){
+  //	Rprintf("%d\n",prob.skips[z]);
+  //}
+
   int seed = INTEGER(getListElement(args,"seed",1))[0];
 
   // Assume return list is already set up with appropriate fields as
@@ -3126,6 +3192,12 @@ SEXP svmtrain(SEXP pairArgs){
 
   /* call svm_train */
   model = svm_train(&prob, &par);
+
+  Rprintf("In function svmtrain the skip list was captured as: [");
+  for(int i = 0; i < model->numSkips; i++){
+	Rprintf("%d ",model->skips[i]);
+  }
+  Rprintf("]\nCaptured numSkips as: %d\n",model->numSkips);
     
   int totSV = model->l;
   INTEGER(getListElement(ret,"tot.nSV",1))[0] = totSV;

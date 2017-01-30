@@ -120,9 +120,6 @@ svm <- function (p,
     y <- p$y
   }
 
-  ## Is the list captured properly?
-  skips
-
   ## NULL parameters?
   if(is.null(degree)) stop(sQuote("degree"), " must not be NULL!")
   if(is.null(gamma)) stop(sQuote("gamma"), " must not be NULL!")

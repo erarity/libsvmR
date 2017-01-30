@@ -20,6 +20,7 @@ struct svm_problem
 	int l;                  // Number of rows or number of training examples
 	double *y;              // The classes
 	struct svm_node **x;    // The features
+	//MODTAG
 	int *skips;		// The columns to be skipped
 	int numskips;		// Number of elements in the skip vector
 };
